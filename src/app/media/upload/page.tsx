@@ -14,7 +14,7 @@ import {
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type UploadStatus = "queued" | "uploading" | "complete" | "error";
+type UploadStatus = "queued" | "uploading" | "processing" | "complete" | "error";
 
 interface UploadFile {
   id: string;
@@ -50,11 +50,50 @@ function formatSize(bytes: number) {
   return mb < 1 ? `${(mb * 1024).toFixed(0)} KB` : `${mb.toFixed(1)} MB`;
 }
 
-function uploadFileWithProgress(
+// Capture a JPEG thumbnail Blob from a video File at a given time offset
+function captureVideoThumbnail(file: File, seekTime = 1.5): Promise<Blob | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    const objectUrl = URL.createObjectURL(file);
+    video.src = objectUrl;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+
+    const cleanup = () => URL.revokeObjectURL(objectUrl);
+
+    video.addEventListener("loadedmetadata", () => {
+      // Clamp seekTime to the video duration
+      video.currentTime = Math.min(seekTime, (video.duration || 2) - 0.1);
+    });
+
+    video.addEventListener("seeked", () => {
+      try {
+        const canvas = document.createElement("canvas");
+        canvas.width = video.videoWidth || 1280;
+        canvas.height = video.videoHeight || 720;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { cleanup(); resolve(null); return; }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        canvas.toBlob((blob) => { cleanup(); resolve(blob); }, "image/jpeg", 0.85);
+      } catch {
+        cleanup();
+        resolve(null);
+      }
+    });
+
+    video.addEventListener("error", () => { cleanup(); resolve(null); });
+
+    // Start loading
+    video.load();
+  });
+}
+
+async function uploadFileWithProgress(
   file: File,
   token: string | null,
   onProgress: (progress: number) => void,
-  onComplete: () => void,
+  onComplete: (resBody?: any) => void,
   onError: (error: string) => void
 ) {
   const xhr = new XMLHttpRequest();
@@ -79,7 +118,23 @@ function uploadFileWithProgress(
 
   xhr.onload = () => {
     if (xhr.status >= 200 && xhr.status < 300) {
-      onComplete();
+      let resBody: any = null;
+      try {
+        resBody = JSON.parse(xhr.responseText);
+        if (resBody) {
+          if (resBody.success === false) {
+            onError(resBody.message || resBody.error || "Upload failed.");
+            return;
+          }
+          if (resBody.data?.video?.processingStatus === "FAILED") {
+            onError(resBody.data.video.failureReason || "Video processing failed on backend server.");
+            return;
+          }
+        }
+      } catch (err) {
+        // Fallback
+      }
+      onComplete(resBody);
     } else {
       let msg = `Upload failed with status ${xhr.status}`;
       try {
@@ -99,6 +154,12 @@ function uploadFileWithProgress(
     formData.append("video", file);
     const titleWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     formData.append("title", titleWithoutExt);
+
+    // Auto-generate thumbnail from frame 1.5s and attach it to the upload
+    const thumbnail = await captureVideoThumbnail(file, 1.5);
+    if (thumbnail) {
+      formData.append("thumbnail", thumbnail, "thumbnail.jpg");
+    }
   } else {
     formData.append("images", file);
   }
@@ -155,13 +216,13 @@ export default function UploadMediaPage() {
 
     // Start real upload for each
     newEntries.forEach(({ id, file }) => {
-      setTimeout(() => {
+      setTimeout(async () => {
         setFiles((prev) =>
           prev.map((f) => f.id === id ? { ...f, status: "uploading" } : f)
         );
         
         const token = typeof window !== "undefined" ? localStorage.getItem("session_token") : null;
-        const xhr = uploadFileWithProgress(
+        const xhr = await uploadFileWithProgress(
           file,
           token,
           (progress) => {
@@ -169,7 +230,10 @@ export default function UploadMediaPage() {
               prev.map((f) => f.id === id ? { ...f, progress } : f)
             );
           },
-          () => {
+          async (resBody) => {
+            // The file has successfully uploaded to the backend server.
+            // If it is a video, it is now safely processing in the background,
+            // so we mark the upload action as complete.
             setFiles((prev) =>
               prev.map((f) => f.id === id ? { ...f, status: "complete", progress: 100 } : f)
             );
@@ -219,6 +283,7 @@ export default function UploadMediaPage() {
 
   function barColor(status: UploadStatus) {
     if (status === "complete") return "bg-emerald-500";
+    if (status === "processing") return "bg-amber-500 animate-pulse";
     if (status === "error")    return "bg-red-500";
     return "bg-[#B31046]";
   }
@@ -368,6 +433,11 @@ export default function UploadMediaPage() {
                     <div className="flex items-center gap-1 text-xs font-bold text-emerald-600">
                       <CheckCircle2 className="w-4 h-4" />
                       COMPLETE
+                    </div>
+                  ) : file.status === "processing" ? (
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-amber-500 animate-pulse">
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      PROCESSING
                     </div>
                   ) : file.status === "error" ? (
                     <div className="text-xs font-bold text-red-500">

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -20,162 +20,44 @@ import {
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import { VIDEO_CATEGORIES, VIDEO_CATEGORY_COLOURS } from "@/lib/videoCategories";
+import { getVideoContents, deleteVideoContent, resolveAssetUrl, VideoContentItem, getCategories, CategoryApiData } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type VideoStatus = "Published" | "Scheduled" | "Draft";
+type VideoStatus = "PUBLISHED" | "SCHEDULED" | "DRAFT";
 
-interface VideoItem {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  duration: string;
-  date: string;
-  status: VideoStatus;
-  gradient: string;
-  imageUrl?: string;
-  videoUrl?: string;
-}
-
-// ─── Initial Mock Data ────────────────────────────────────────────────────────
-
-const INITIAL_VIDEOS: VideoItem[] = [
-  {
-    id: "1",
-    title: "David and Goliath (Animated)",
-    description: "Watch how a young shepherd boy defeats a giant with just a sling and five smooth stones.",
-    category: "Animated Stories",
-    duration: "5:10",
-    date: "12 Mar 2025",
-    status: "Published",
-    gradient: "from-blue-500 via-teal-500 to-indigo-600",
-    imageUrl: "https://images.unsplash.com/photo-1548625361-155deee223de?q=80&w=350&auto=format&fit=crop",
-    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  },
-  {
-    id: "2",
-    title: "Jesus Loves Me (Sing-Along)",
-    description: "A fun and uplifting version of the classic Sunday school hymn for kids of all ages.",
-    category: "Sing-Along Songs",
-    duration: "2:30",
-    date: "8 Mar 2025",
-    status: "Published",
-    gradient: "from-pink-500 via-rose-500 to-amber-500",
-    imageUrl: "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?q=80&w=350&auto=format&fit=crop",
-    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  },
-  {
-    id: "3",
-    title: "Psalm 23 Memory Verse",
-    description: "Learn 'The Lord is my shepherd' using interactive kinetic typography and animation.",
-    category: "Memory Verses",
-    duration: "1:45",
-    date: "1 Mar 2025",
-    status: "Published",
-    gradient: "from-sky-300 via-indigo-400 to-purple-500",
-    imageUrl: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=350&auto=format&fit=crop",
-    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  },
-  {
-    id: "4",
-    title: "The Lost Sheep Puppet Play",
-    description: "Barnaby the Puppet goes on a search to find the one sheep that got lost in the wild.",
-    category: "Puppet Shows",
-    duration: "8:15",
-    date: "20 Feb 2025",
-    status: "Published",
-    gradient: "from-purple-400 via-indigo-500 to-blue-600",
-    imageUrl: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=350&auto=format&fit=crop",
-    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  },
-  {
-    id: "5",
-    title: "Noah's Ark & Scientific Facts",
-    description: "How big was the ark? Explore the science behind the biblical dimensions of Noah's vessel.",
-    category: "Science & Bible",
-    duration: "6:40",
-    date: "14 Feb 2025",
-    status: "Draft",
-    gradient: "from-emerald-400 via-teal-500 to-green-600",
-  },
-  {
-    id: "6",
-    title: "Goodnight Little Lamb",
-    description: "A soothing bedtime narrative designed to help toddlers wind down and sleep peacefully.",
-    category: "Bedtime Stories",
-    duration: "15:20",
-    date: "5 Feb 2025",
-    status: "Scheduled",
-    gradient: "from-indigo-600 via-blue-700 to-slate-800",
-    imageUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=350&auto=format&fit=crop",
-    videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ",
-  },
-  {
-    id: "7",
-    title: "Daniel and the Lions (Animated)",
-    description: "Watch Daniel's unwavering faith protect him in the pit of hungry lions.",
-    category: "Animated Stories",
-    duration: "5:50",
-    date: "28 Jan 2025",
-    status: "Published",
-    gradient: "from-amber-500 via-orange-600 to-red-700",
-    imageUrl: "https://images.unsplash.com/photo-1546182990-dffeafbe841d?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "8",
-    title: "He's Got the Whole World Songs",
-    description: "Clap your hands and sing along to this bright, acoustic version of the classic tune.",
-    category: "Sing-Along Songs",
-    duration: "3:00",
-    date: "25 Jan 2025",
-    status: "Published",
-    gradient: "from-yellow-400 via-amber-500 to-orange-600",
-  },
-  {
-    id: "9",
-    title: "Philippians 4:13 Memory Rap",
-    description: "Rap along to memorize 'I can do all things through Christ who strengthens me'.",
-    category: "Memory Verses",
-    duration: "2:10",
-    date: "20 Jan 2025",
-    status: "Published",
-    gradient: "from-sky-400 via-blue-500 to-indigo-600",
-    imageUrl: "https://images.unsplash.com/photo-1488590528505-98d2b5aba04b?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "10",
-    title: "Joseph's Colorful Coat Puppets",
-    description: "A funny and engaging retelling of Joseph and his brothers using handcrafted puppets.",
-    category: "Puppet Shows",
-    duration: "7:30",
-    date: "15 Jan 2025",
-    status: "Draft",
-    gradient: "from-purple-500 via-rose-500 to-pink-500",
-  },
-  {
-    id: "11",
-    title: "Stars, Moon & God's Universe",
-    description: "Look through the telescope and admire the vast, beautiful heavens created by God.",
-    category: "Science & Bible",
-    duration: "10:15",
-    date: "10 Jan 2025",
-    status: "Published",
-    gradient: "from-teal-600 via-cyan-700 to-zinc-800",
-  },
-  {
-    id: "12",
-    title: "Sleepytime Bible Blessings",
-    description: "Calm scriptures read softly over ambient nature sounds for deep bedtime rest.",
-    category: "Bedtime Stories",
-    duration: "20:00",
-    date: "5 Jan 2025",
-    status: "Published",
-    gradient: "from-indigo-900 via-slate-800 to-zinc-900",
-  },
+const GRADIENT_POOL = [
+  "from-blue-500 via-teal-500 to-indigo-600",
+  "from-pink-500 via-rose-500 to-amber-500",
+  "from-sky-300 via-indigo-400 to-purple-500",
+  "from-purple-400 via-indigo-500 to-blue-600",
+  "from-emerald-400 via-teal-500 to-green-600",
+  "from-indigo-600 via-blue-700 to-slate-800",
+  "from-amber-500 via-orange-600 to-red-700",
+  "from-yellow-400 via-amber-500 to-orange-600",
 ];
 
-const CATEGORIES = ["All Categories", ...VIDEO_CATEGORIES];
+function getGradient(str: string) {
+  let h = 0;
+  for (let i = 0; i < str.length; i++) h += str.charCodeAt(i);
+  return GRADIENT_POOL[h % GRADIENT_POOL.length];
+}
+
+function formatDuration(secs: number | null | undefined): string {
+  if (!secs) return "--";
+  const m = Math.floor(secs / 60);
+  const s = String(Math.floor(secs % 60)).padStart(2, "0");
+  return `${m}:${s}`;
+}
+
+function formatDate(dateStr: string) {
+  try {
+    const d = new Date(dateStr);
+    return d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+  } catch { return "N/A"; }
+}
+
+// Categories are fetched dynamically from the API
 
 // ─── Dropdown Component ───────────────────────────────────────────────────────
 
@@ -238,19 +120,20 @@ function CategoryBadge({ category }: { category: string }) {
 
 function StatusBadge({ status }: { status: VideoStatus }) {
   switch (status) {
-    case "Published":
+    case "PUBLISHED":
       return (
         <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-emerald-100 text-emerald-700 border border-emerald-250/20">
           Published
         </span>
       );
-    case "Scheduled":
+    case "SCHEDULED":
       return (
         <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-blue-50 text-blue-600 border border-blue-100">
           Scheduled
         </span>
       );
-    case "Draft":
+    case "DRAFT":
+    default:
       return (
         <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase bg-zinc-100 text-zinc-500 border border-zinc-200">
           Draft
@@ -344,57 +227,71 @@ function VideosListSkeleton() {
 
 export default function VideosPage() {
   const router = useRouter();
-  const [videos, setVideos] = useState<VideoItem[]>(INITIAL_VIDEOS);
+  const [videos, setVideos] = useState<VideoContentItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalVideos, setTotalVideos] = useState(0);
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All Categories");
+  const [categories, setCategories] = useState<CategoryApiData[]>([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("All Statuses");
   const [page, setPage] = useState(1);
-  const [deletingVideo, setDeletingVideo] = useState<VideoItem | null>(null);
+  const [deletingVideo, setDeletingVideo] = useState<VideoContentItem | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const itemsPerPage = 6;
 
-  useEffect(() => {
-    // Simulate loading for loading experience parity
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, []);
-
   const addToast = (type: "success" | "error" | "info", message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, type, message }]);
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id));
-    }, 4000);
+    setTimeout(() => setToasts((prev) => prev.filter((t) => t.id !== id)), 4000);
   };
 
-  const removeToast = (id: string) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id));
-  };
+  const removeToast = (id: string) => setToasts((prev) => prev.filter((t) => t.id !== id));
 
-  // Filter & Search
-  const filtered = videos.filter((vid) => {
-    const matchesSearch = vid.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      vid.description.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === "All Categories" || vid.category === selectedCategory;
-    const matchesStatus = selectedStatus === "All Statuses" || vid.status === selectedStatus;
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
+  // Fetch video categories once on mount
+  useEffect(() => {
+    getCategories("VIDEO")
+      .then((res) => { if (res?.success) setCategories(res.data); })
+      .catch(() => {});
+  }, []);
 
-  const totalVideos = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(totalVideos / itemsPerPage));
-  const startIndex = (page - 1) * itemsPerPage;
-  const paginatedVideos = filtered.slice(startIndex, startIndex + itemsPerPage);
+  const fetchVideos = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params: Record<string, string | number> = { page, limit: itemsPerPage };
+      if (selectedStatus !== "All Statuses") params.status = selectedStatus.toUpperCase();
+      if (searchTerm.trim()) params.search = searchTerm.trim();
+      if (selectedCategoryId) params.categoryId = selectedCategoryId;
+      const res = await getVideoContents(params as Parameters<typeof getVideoContents>[0]);
+      if (res?.success) {
+        setVideos(res.data);
+        setTotalPages(res.meta.totalPages);
+        setTotalVideos(res.meta.total);
+      }
+    } catch (err) {
+      addToast("error", "Failed to load videos.");
+    } finally {
+      setLoading(false);
+    }
+  }, [page, selectedStatus, searchTerm, selectedCategoryId]);
 
-  const handleDelete = () => {
+  useEffect(() => { fetchVideos(); }, [fetchVideos]);
+
+  const paginatedVideos = videos;
+
+  const handleDelete = async () => {
     if (!deletingVideo) return;
-    setVideos((prev) => prev.filter((v) => v.id !== deletingVideo.id));
-    addToast("success", `Video "${deletingVideo.title}" deleted successfully.`);
-    setDeletingVideo(null);
+    try {
+      await deleteVideoContent(deletingVideo.id);
+      addToast("success", `"${deletingVideo.title}" deleted successfully.`);
+      setDeletingVideo(null);
+      fetchVideos();
+    } catch {
+      addToast("error", "Failed to delete video.");
+      setDeletingVideo(null);
+    }
   };
 
   return (
@@ -436,14 +333,20 @@ export default function VideosPage() {
 
         {/* Dropdowns */}
         <div className="flex items-center gap-3">
-          <FilterDropdown
-            value={selectedCategory}
-            options={CATEGORIES}
-            onChange={(val) => {
-              setSelectedCategory(val);
-              setPage(1);
-            }}
-          />
+          {/* Live Category Filter */}
+          <div className="relative shrink-0">
+            <select
+              value={selectedCategoryId}
+              onChange={(e) => { setSelectedCategoryId(e.target.value); setPage(1); }}
+              className="appearance-none flex items-center gap-3 pl-4 pr-9 py-2.5 text-sm font-bold text-zinc-700 bg-white border border-zinc-200 rounded-full hover:border-zinc-300 transition-all shadow-sm cursor-pointer focus:outline-none focus:border-[#B31046]"
+            >
+              <option value="">All Categories</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+              ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+          </div>
 
           <FilterDropdown
             value={selectedStatus}
@@ -494,11 +397,11 @@ export default function VideosPage() {
               {paginatedVideos.map((video) => (
                 <div key={video.id} className="grid grid-cols-[56px_2fr_1fr_1.2fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5 hover:bg-zinc-50/50 transition-colors group">
                   {/* Thumbnail */}
-                  <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-gradient-to-br from-zinc-100 to-zinc-200 relative">
-                    {video.imageUrl ? (
-                      <img src={video.imageUrl} alt={video.title} className="w-full h-full object-cover" />
+                  <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 relative">
+                    {video.videoAsset?.thumbnailUrl ? (
+                      <img src={resolveAssetUrl(video.videoAsset.thumbnailUrl)} alt={video.title} className="w-full h-full object-cover" />
                     ) : (
-                      <div className={`w-full h-full bg-gradient-to-br ${video.gradient} flex items-center justify-center`}>
+                      <div className={`w-full h-full bg-gradient-to-br ${getGradient(video.id)} flex items-center justify-center`}>
                         <ImageIcon className="w-4 h-4 text-white/60" />
                       </div>
                     )}
@@ -509,19 +412,19 @@ export default function VideosPage() {
                   {/* Title + description */}
                   <div className="min-w-0">
                     <p className="text-sm font-extrabold text-zinc-900 truncate">{video.title}</p>
-                    <p className="text-xs text-zinc-400 font-medium truncate mt-0.5">{video.description}</p>
+                    <p className="text-xs text-zinc-400 font-medium truncate mt-0.5">{video.description || "—"}</p>
                   </div>
                   {/* Duration */}
                   <div className="flex items-center gap-1.5 text-zinc-500">
                     <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                    <span className="text-xs font-bold">{video.duration}</span>
+                    <span className="text-xs font-bold">{formatDuration(video.videoAsset?.durationSeconds)}</span>
                   </div>
                   {/* Category */}
-                  <div><CategoryBadge category={video.category} /></div>
+                  <div><CategoryBadge category={video.category?.name || "—"} /></div>
                   {/* Date */}
-                  <span className="text-xs font-semibold text-zinc-500">{video.date}</span>
+                  <span className="text-xs font-semibold text-zinc-500">{formatDate(video.createdAt)}</span>
                   {/* Status */}
-                  <div><StatusBadge status={video.status} /></div>
+                  <div><StatusBadge status={video.status as VideoStatus} /></div>
                   {/* Actions */}
                   <div className="flex items-center gap-2">
                     <button onClick={() => router.push(`/videos/new?edit=${video.id}`)} className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] hover:border-[#FFF0F2] transition-all cursor-pointer" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
@@ -537,9 +440,9 @@ export default function VideosPage() {
             {paginatedVideos.map((video) => (
               <div key={video.id} className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm hover:shadow-md transition-shadow flex flex-col">
                 {/* Thumbnail */}
-                <div className={`relative aspect-video bg-gradient-to-br ${video.gradient} flex items-center justify-center overflow-hidden group`}>
-                  {video.imageUrl ? (
-                    <img src={video.imageUrl} alt={video.title} className="w-full h-full object-cover transition-transform hover:scale-103 duration-300" />
+                <div className={`relative aspect-video bg-gradient-to-br ${getGradient(video.id)} flex items-center justify-center overflow-hidden group`}>
+                  {video.videoAsset?.thumbnailUrl ? (
+                    <img src={resolveAssetUrl(video.videoAsset.thumbnailUrl)} alt={video.title} className="w-full h-full object-cover transition-transform hover:scale-103 duration-300" />
                   ) : (
                     <ImageIcon className="w-12 h-12 text-white/30" />
                   )}
@@ -552,12 +455,12 @@ export default function VideosPage() {
                   {/* Duration Badge */}
                   <span className="absolute bottom-4 left-4 text-[10px] font-extrabold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-md flex items-center gap-1 select-none">
                     <Clock className="w-3 h-3" />
-                    {video.duration}
+                    {formatDuration(video.videoAsset?.durationSeconds)}
                   </span>
                   {/* Status Badge */}
                   <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
-                    video.status === "Published" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
-                    : video.status === "Scheduled" ? "bg-blue-50/90 text-blue-600 border border-blue-100/50"
+                    video.status === "PUBLISHED" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
+                    : video.status === "SCHEDULED" ? "bg-blue-50/90 text-blue-600 border border-blue-100/50"
                     : "bg-zinc-800/40 text-zinc-200 border border-white/10"
                   }`}>{video.status}</span>
                 </div>
@@ -565,10 +468,10 @@ export default function VideosPage() {
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                   <div className="space-y-2">
                     <h3 className="text-base font-extrabold text-zinc-900 leading-snug line-clamp-1 hover:text-[#B31046] transition-colors">{video.title}</h3>
-                    <p className="text-xs text-zinc-400 font-semibold leading-relaxed line-clamp-2">{video.description}</p>
+                    <p className="text-xs text-zinc-400 font-semibold leading-relaxed line-clamp-2">{video.description || "—"}</p>
                     <div className="flex items-center gap-2 pt-1">
-                      <CategoryBadge category={video.category} />
-                      <span className="text-xs text-zinc-400 font-semibold">{video.date}</span>
+                      <CategoryBadge category={video.category?.name || "—"} />
+                      <span className="text-xs text-zinc-400 font-semibold">{formatDate(video.createdAt)}</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 pt-2">
@@ -592,8 +495,8 @@ export default function VideosPage() {
         <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm">
           <div className="flex items-center justify-between px-6 py-4">
             <span className="text-xs font-semibold text-zinc-500">
-              Showing <span className="font-extrabold text-zinc-700">{(page - 1) * itemsPerPage + 1}–{Math.min(page * itemsPerPage, filtered.length)}</span> of{" "}
-              <span className="font-extrabold text-zinc-700">{filtered.length}</span> videos
+              Page <span className="font-extrabold text-zinc-700">{page}</span> of{" "}
+              <span className="font-extrabold text-zinc-700">{totalPages}</span> · {totalVideos} total
             </span>
             <div className="flex items-center gap-2">
               <button

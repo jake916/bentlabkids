@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import {
   Upload,
@@ -16,8 +16,9 @@ import {
   Trash2,
   X,
   Info,
+  AlertTriangle,
 } from "lucide-react";
-import { getUploads, deleteVideo, resolveAssetUrl, getBunnyThumbnailUrl } from "@/lib/api";
+import { getUploads, deleteVideo, resolveAssetUrl, getBunnyThumbnailUrl, getVideoStatus } from "@/lib/api";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -115,6 +116,64 @@ function typeBadgeStyle(type: MediaType) {
     case "MP4":  return "bg-rose-105 text-[#B31046]";
     case "MOV":  return "bg-indigo-100 text-indigo-650";
   }
+}
+
+// ─── VideoThumbnail ──────────────────────────────────────────────────────────
+// Captures a frame from a video URL using a hidden canvas when no thumbnail is available
+function VideoThumbnail({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [thumbSrc, setThumbSrc] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  const captureFrame = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth || 320;
+      canvas.height = video.videoHeight || 180;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
+        // A blank canvas produces a tiny data URL — treat that as failed
+        if (dataUrl.length > 5000) {
+          setThumbSrc(dataUrl);
+        } else {
+          setFailed(true);
+        }
+      }
+    } catch {
+      setFailed(true);
+    }
+  }, []);
+
+  if (thumbSrc) {
+    return <img src={thumbSrc} alt={alt} className={className} />;
+  }
+
+  if (failed) {
+    return (
+      <div className="w-full h-full flex items-center justify-center bg-zinc-800">
+        <Film className="w-10 h-10 text-zinc-500" />
+      </div>
+    );
+  }
+
+  return (
+    <video
+      ref={videoRef}
+      src={`${src}#t=1.5`}
+      preload="metadata"
+      muted
+      playsInline
+      crossOrigin="anonymous"
+      className="w-full h-full object-cover pointer-events-none opacity-0 absolute inset-0"
+      onLoadedData={captureFrame}
+      onSeeked={captureFrame}
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 // ─── Subcomponents ────────────────────────────────────────────────────────────
@@ -245,6 +304,61 @@ export default function MediaPage() {
       });
   }, []);
 
+  // Poll processing videos
+  useEffect(() => {
+    const processingItems = mediaFiles.filter(
+      (f) =>
+        (f.type === "MP4" || f.type === "MOV") &&
+        (f.processingStatus === "PROCESSING" ||
+          f.processingStatus === "QUEUED" ||
+          f.processingStatus === "UPLOADING")
+    );
+
+    if (processingItems.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      for (const item of processingItems) {
+        const realId = item.id.startsWith("vid-") ? item.id.substring(4) : item.id;
+        try {
+          const res = await getVideoStatus(realId);
+          if (res?.success && res.data) {
+            const status = res.data.processingStatus;
+            const newPlaybackUrl = res.data.playbackUrl;
+            const newThumbnailUrl = res.data.thumbnailUrl;
+
+            setMediaFiles((prev) =>
+              prev.map((f) => {
+                if (f.id === item.id) {
+                  return {
+                    ...f,
+                    processingStatus: status,
+                    url: newPlaybackUrl ? resolveAssetUrl(newPlaybackUrl) : f.url,
+                    thumbnailUrl: newThumbnailUrl ? resolveAssetUrl(newThumbnailUrl) : f.thumbnailUrl
+                  };
+                }
+                return f;
+              })
+            );
+          }
+        } catch (err) {
+          console.warn("Failed to check status for video:", realId, err);
+        }
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(intervalId);
+  }, [mediaFiles]);
+
+  // Sync detailFile state with mediaFiles updates
+  useEffect(() => {
+    if (detailFile) {
+      const updated = mediaFiles.find((f) => f.id === detailFile.id);
+      if (updated && (updated.processingStatus !== detailFile.processingStatus || updated.url !== detailFile.url)) {
+        setDetailFile(updated);
+      }
+    }
+  }, [mediaFiles, detailFile]);
+
   const selectedFile = selectedIds.length === 1 ? mediaFiles.find((f) => f.id === selectedIds[0]) : null;
 
   const filtered = mediaFiles.filter((f) => {
@@ -324,7 +438,83 @@ export default function MediaPage() {
           console.error(`Failed to delete video ${realId}`, err);
         }
       } else {
-        // Mock delete images from state
+        const realId = id.startsWith("img-") ? id.substring(4) : id;
+        console.log(`[Media Library] Attempting exploratory deletes for image: ${realId}`);
+        const token = typeof window !== "undefined" ? localStorage.getItem("session_token") : null;
+        const headers: any = {
+          "Content-Type": "application/json"
+        };
+        if (token) {
+          headers["Authorization"] = `Bearer ${token}`;
+        }
+
+        // Endpoint 1: DELETE /api/v1/admin/uploads/:publicId
+        try {
+          const res1 = await fetch(`/api/v1/admin/uploads/${encodeURIComponent(realId)}`, {
+            method: "DELETE",
+            headers
+          });
+          console.log(`[Media Library] Option 1: DELETE /api/v1/admin/uploads/${realId} -> Status: ${res1.status}`);
+          if (res1.ok) {
+            console.log("[Media Library] Option 1 SUCCEEDED!");
+            deletedCount++;
+            continue;
+          }
+        } catch (err) {
+          console.error("[Media Library] Option 1 error", err);
+        }
+
+        // Endpoint 2: DELETE /api/v1/admin/uploads?publicId=...
+        try {
+          const res2 = await fetch(`/api/v1/admin/uploads?publicId=${encodeURIComponent(realId)}`, {
+            method: "DELETE",
+            headers
+          });
+          console.log(`[Media Library] Option 2: DELETE /api/v1/admin/uploads?publicId=${realId} -> Status: ${res2.status}`);
+          if (res2.ok) {
+            console.log("[Media Library] Option 2 SUCCEEDED!");
+            deletedCount++;
+            continue;
+          }
+        } catch (err) {
+          console.error("[Media Library] Option 2 error", err);
+        }
+
+        // Endpoint 3: DELETE /api/v1/admin/uploads with body
+        try {
+          const res3 = await fetch(`/api/v1/admin/uploads`, {
+            method: "DELETE",
+            headers,
+            body: JSON.stringify({ publicId: realId })
+          });
+          console.log(`[Media Library] Option 3: DELETE /api/v1/admin/uploads (body: publicId) -> Status: ${res3.status}`);
+          if (res3.ok) {
+            console.log("[Media Library] Option 3 SUCCEEDED!");
+            deletedCount++;
+            continue;
+          }
+        } catch (err) {
+          console.error("[Media Library] Option 3 error", err);
+        }
+
+        // Endpoint 4: DELETE /api/v1/admin/images/:publicId
+        try {
+          const res4 = await fetch(`/api/v1/admin/images/${encodeURIComponent(realId)}`, {
+            method: "DELETE",
+            headers
+          });
+          console.log(`[Media Library] Option 4: DELETE /api/v1/admin/images/${realId} -> Status: ${res4.status}`);
+          if (res4.ok) {
+            console.log("[Media Library] Option 4 SUCCEEDED!");
+            deletedCount++;
+            continue;
+          }
+        } catch (err) {
+          console.error("[Media Library] Option 4 error", err);
+        }
+
+        // Default fallback if all exploratory endpoints failed
+        console.warn(`[Media Library] All backend image delete endpoints failed for: ${realId}. Falling back to client-only delete.`);
         deletedCount++;
       }
     }
@@ -408,6 +598,13 @@ export default function MediaPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {paginated.map((file) => {
             const isSelected = selectedIds.includes(file.id);
+            const isProcessing = file.type === "MP4" || file.type === "MOV"
+              ? (file.processingStatus === "QUEUED" || file.processingStatus === "UPLOADING" || file.processingStatus === "PROCESSING")
+              : false;
+            const isFailed = file.type === "MP4" || file.type === "MOV"
+              ? file.processingStatus === "FAILED"
+              : false;
+
             return (
               <div
                 key={file.id}
@@ -424,17 +621,23 @@ export default function MediaPage() {
                         {file.thumbnailUrl ? (
                           <img src={file.thumbnailUrl} alt={file.name} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" />
                         ) : (
-                          <video
-                            src={`${file.url}#t=1.0`}
-                            preload="auto"
-                            muted
-                            playsInline
-                            className="w-full h-full object-cover pointer-events-none"
-                          />
+                          <VideoThumbnail src={file.url} alt={file.name} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" />
                         )}
-                        <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
-                          <Play className="w-8 h-8 text-white fill-white/80 drop-shadow-md" />
-                        </div>
+                        {isProcessing ? (
+                          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2">
+                            <div className="w-6 h-6 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                            <span className="text-[10px] font-bold text-amber-500 tracking-wide uppercase">Processing</span>
+                          </div>
+                        ) : isFailed ? (
+                          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-1.5 p-2 text-center">
+                            <AlertTriangle className="w-6 h-6 text-red-500" />
+                            <span className="text-[10px] font-bold text-red-500 tracking-wide uppercase">Failed</span>
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 bg-black/25 flex items-center justify-center">
+                            <Play className="w-8 h-8 text-white fill-white/80 drop-shadow-md" />
+                          </div>
+                        )}
                       </div>
                     ) : (
                       <img src={file.url} alt={file.name} className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300" />
@@ -602,7 +805,23 @@ export default function MediaPage() {
 
             <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 flex items-center justify-center overflow-hidden border border-zinc-100 bg-zinc-950">
               {detailFile.type === "MP4" || detailFile.type === "MOV" ? (
-                detailFile.url && (detailFile.url.includes("iframe.mediadelivery.net") || detailFile.url.includes("embed")) ? (
+                (detailFile.processingStatus === "QUEUED" || detailFile.processingStatus === "UPLOADING" || detailFile.processingStatus === "PROCESSING") ? (
+                  <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
+                    <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-amber-500">Video is processing</p>
+                      <p className="text-xs text-zinc-400">Bunny.net is currently converting and optimizing this video for playback.</p>
+                    </div>
+                  </div>
+                ) : detailFile.processingStatus === "FAILED" ? (
+                  <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
+                    <AlertTriangle className="w-8 h-8 text-red-500" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-red-500">Processing Failed</p>
+                      <p className="text-xs text-zinc-400">The video failed to transcode. Please try re-uploading.</p>
+                    </div>
+                  </div>
+                ) : detailFile.url && (detailFile.url.includes("iframe.mediadelivery.net") || detailFile.url.includes("embed")) ? (
                   <iframe
                     src={detailFile.url}
                     loading="lazy"
@@ -611,7 +830,7 @@ export default function MediaPage() {
                     allowFullScreen
                   />
                 ) : (
-                  <video src={detailFile.url} controls className="w-full h-full object-contain relative z-10" />
+                  <video src={detailFile.url || undefined} controls className="w-full h-full object-contain relative z-10" />
                 )
               ) : detailFile.url ? (
                 <img src={detailFile.url} alt={detailFile.name} className="w-full h-full object-cover relative z-10" />

@@ -288,7 +288,7 @@ function CreateVideoForm() {
                 {/* Premium Video Player */}
                 <div className="relative rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-950 aspect-video flex items-center justify-center shadow-inner group/player">
                   <video
-                    src={attachedVideo.url}
+                    src={attachedVideo.url || undefined}
                     controls
                     className="w-full h-full object-contain"
                   />

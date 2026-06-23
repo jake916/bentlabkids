@@ -537,6 +537,100 @@ export async function deleteVideo(id: string): Promise<{ success: boolean; messa
   });
 }
 
+export interface VideoStatusResponse {
+  success: boolean;
+  data: {
+    id: string;
+    processingStatus: "QUEUED" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED";
+    uploadProgress: number;
+    failureReason: string | null;
+    playbackUrl?: string | null;
+    thumbnailUrl?: string | null;
+  };
+}
+
+export async function getVideoStatus(id: string): Promise<VideoStatusResponse> {
+  return apiFetch<VideoStatusResponse>(`/api/v1/admin/videos/${id}/status`);
+}
+
+// ─── Video Contents (Video Listing Page) ─────────────────────────────────────
+
+export interface VideoAsset {
+  id: string;
+  title: string;
+  provider: "BUNNY" | "YOUTUBE" | "VIMEO";
+  externalVideoId: string | null;
+  playbackUrl: string | null;
+  thumbnailUrl: string | null;
+  durationSeconds: number | null;
+  processingStatus: "QUEUED" | "UPLOADING" | "PROCESSING" | "READY" | "FAILED";
+  uploadProgress: number;
+  failureReason: string | null;
+  uploadedBy: { id: string; name: string; email: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoContentItem {
+  id: string;
+  title: string;
+  slug: string;
+  type: string;
+  content: string;
+  description: string | null;
+  duration: number | null;
+  verseReference: string | null;
+  ageGroup: string | null;
+  featuredImage: string | null;
+  prayerWhen: string | null;
+  status: string;
+  scheduledFor: string | null;
+  publishedAt: string | null;
+  category: Category | null;
+  videoAssetId: string | null;
+  videoAsset: VideoAsset | null;
+  tags: { tag: { id: string; name: string; slug: string } }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VideoContentsResponse {
+  success: boolean;
+  data: VideoContentItem[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export async function getVideoContents(params?: {
+  categoryId?: string;
+  status?: string;
+  ageGroup?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<VideoContentsResponse> {
+  const query = params
+    ? "?" + new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== "")
+            .map(([k, v]) => [k, String(v)])
+        )
+      ).toString()
+    : "";
+  return apiFetch<VideoContentsResponse>(`/api/v1/admin/video-contents${query}`);
+}
+
+export async function deleteVideoContent(id: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(`/api/v1/admin/video-contents/${id}`, {
+    method: "DELETE",
+  });
+}
+
 // ─── Admin Categories ─────────────────────────────────────────────────────────
 
 export type CategoryApiType = "BIBLE_STORY" | "PRAYER" | "VIDEO";

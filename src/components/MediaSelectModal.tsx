@@ -12,6 +12,7 @@ export interface MediaFile {
   url?: string;
   duration?: string; // for video files
   size?: string; // for video files
+  processingStatus?: string;
 }
 
 interface MediaSelectModalProps {
@@ -102,6 +103,7 @@ export default function MediaSelectModal({
                   : "0:00",
                 size: getMockVideoSize(vid.durationSeconds),
                 type: ext,
+                processingStatus: vid.processingStatus,
               };
             });
             setMediaList(vids);
@@ -177,10 +179,15 @@ export default function MediaSelectModal({
               return (
                 <div
                   key={v.id}
-                  onClick={() => setSelectedMediaId(v.id)}
+                  onClick={() => {
+                    if (v.processingStatus === "FAILED") return;
+                    setSelectedMediaId(v.id);
+                  }}
                   className={`p-4 rounded-2xl border-2 flex items-center gap-3 cursor-pointer select-none transition-all ${
                     isSelected
                       ? "border-[#B31046] bg-[#FFF0F2]/10 ring-4 ring-[#B31046]/10"
+                      : v.processingStatus === "FAILED"
+                      ? "border-zinc-200 bg-zinc-50 opacity-50 cursor-not-allowed"
                       : "border-zinc-200 hover:border-zinc-300 bg-white"
                   }`}
                 >
@@ -193,8 +200,14 @@ export default function MediaSelectModal({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-extrabold text-zinc-800 truncate">{v.name}</p>
-                    <p className="text-[10px] font-bold text-zinc-400 mt-0.5">
-                      {v.size} • {v.duration}
+                    <p className="text-[10px] font-bold mt-0.5">
+                      {v.processingStatus === "FAILED" ? (
+                        <span className="text-red-500 font-extrabold uppercase">Failed</span>
+                      ) : (v.processingStatus === "PROCESSING" || v.processingStatus === "QUEUED" || v.processingStatus === "UPLOADING") ? (
+                        <span className="text-amber-500 font-extrabold uppercase animate-pulse">Processing...</span>
+                      ) : (
+                        <span className="text-zinc-400">{v.size} • {v.duration}</span>
+                      )}
                     </p>
                   </div>
                   {isSelected && (

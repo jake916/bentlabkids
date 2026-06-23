@@ -1,65 +1,46 @@
-const fs = require('fs');
-const swagger = JSON.parse(fs.readFileSync('scratch/swagger.json', 'utf8'));
+const fs = require("fs");
+const path = require("path");
 
-// Check paths
-console.log('--- Paths in Swagger ---');
-const paths = Object.keys(swagger.paths).filter(p => p.includes('prayers'));
-console.log(paths);
+const docPath = "C:\\Users\\jakea\\.gemini\\antigravity\\brain\\e0cfdd35-b9f8-4ab2-8ae2-a6b5b09b587f\\.system_generated\\steps\\306\\content.md";
+const content = fs.readFileSync(docPath, "utf8");
 
-paths.forEach(p => {
-  console.log(`\nEndpoint: ${p}`);
-  const methods = Object.keys(swagger.paths[p]);
-  methods.forEach(m => {
-    console.log(`Method: ${m.toUpperCase()}`);
-    const op = swagger.paths[p][m];
-    
-    // Check requestBody
-    if (op.requestBody) {
-      const content = op.requestBody.content;
-      if (content && content['application/json']) {
-        const schema = content['application/json'].schema;
-        console.log('Request body schema:');
-        resolveAndPrintSchema(schema);
-      }
-    }
-    
-    // Check responses
-    if (op.responses) {
-      const successRes = op.responses['200'] || op.responses['201'];
-      if (successRes && successRes.content && successRes.content['application/json']) {
-        const schema = successRes.content['application/json'].schema;
-        console.log('Success response schema:');
-        resolveAndPrintSchema(schema);
-      }
+const startMarker = '"swaggerDoc":';
+const startIndex = content.indexOf(startMarker);
+if (startIndex === -1) {
+  process.exit(1);
+}
+
+let openBraces = 0;
+let jsonStr = "";
+let foundStart = false;
+
+for (let i = startIndex + startMarker.length; i < content.length; i++) {
+  const char = content[i];
+  if (char === "{") {
+    openBraces++;
+    foundStart = true;
+  } else if (char === "}") {
+    openBraces--;
+  }
+  if (foundStart) {
+    jsonStr += char;
+  }
+  if (foundStart && openBraces === 0) {
+    break;
+  }
+}
+
+const doc = JSON.parse(jsonStr);
+console.log("Searching Swagger definition for webhook or bunny...");
+Object.keys(doc.paths).forEach(p => {
+  const pathObj = doc.paths[p];
+  Object.keys(pathObj).forEach(method => {
+    const operation = pathObj[method];
+    const opText = JSON.stringify(operation).toLowerCase();
+    if (opText.includes("webhook") || opText.includes("bunny")) {
+      console.log(`Match: ${method.toUpperCase()} ${p}`);
+      console.log(`Summary: ${operation.summary}`);
+      console.log("-------------------");
     }
   });
 });
-
-function resolveAndPrintSchema(schema) {
-  if (schema.$ref) {
-    const refName = schema.$ref.split('/').pop();
-    const resolved = swagger.components.schemas[refName];
-    console.log(`Resolved Ref: ${refName}`);
-    printSchemaDetails(resolved);
-  } else {
-    printSchemaDetails(schema);
-  }
-}
-
-function printSchemaDetails(schema) {
-  if (!schema) return;
-  if (schema.properties) {
-    Object.keys(schema.properties).forEach(prop => {
-      const details = schema.properties[prop];
-      let typeStr = details.type;
-      if (details.$ref) {
-        typeStr = details.$ref.split('/').pop();
-      } else if (details.type === 'array' && details.items) {
-        typeStr = `array of ${details.items.$ref ? details.items.$ref.split('/').pop() : details.items.type}`;
-      }
-      console.log(`  - ${prop}: ${typeStr} (required: ${schema.required ? schema.required.includes(prop) : false})`);
-    });
-  } else {
-    console.log(JSON.stringify(schema, null, 2));
-  }
-}
