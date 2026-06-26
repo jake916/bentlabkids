@@ -21,7 +21,7 @@ window.onload = function() {
         "description": "Development server"
       },
       {
-        "url": "https://bentlabkids-api.onrender.com",
+        "url": "https://bentlabkids-api-bxzh.onrender.com",
         "description": "Production server"
       }
     ],
@@ -303,7 +303,7 @@ window.onload = function() {
             "Admin / Upload"
           ],
           "summary": "Upload images and/or video",
-          "description": "Upload up to 10 images (jpg, png, webp, max 5MB each) and/or one video (mp4, webm, mov, max 500MB) with an optional thumbnail.",
+          "description": "Upload up to 10 images (jpg, png, webp, max 5MB each) and/or one video (mp4, webm, mov, max 1GB) with an optional thumbnail.",
           "requestBody": {
             "required": true,
             "content": {
@@ -332,37 +332,6 @@ window.onload = function() {
                     "title": {
                       "type": "string",
                       "description": "Required when sending a video"
-                    },
-                    "description": {
-                      "type": "string"
-                    },
-                    "categoryId": {
-                      "type": "string"
-                    },
-                    "ageGroup": {
-                      "type": "string",
-                      "enum": [
-                        "TODDLER",
-                        "PRESCHOOL",
-                        "EARLY",
-                        "KIDS"
-                      ]
-                    },
-                    "tags": {
-                      "type": "string",
-                      "description": "Comma-separated tag names"
-                    },
-                    "status": {
-                      "type": "string",
-                      "enum": [
-                        "DRAFT",
-                        "PUBLISHED",
-                        "SCHEDULED"
-                      ]
-                    },
-                    "scheduledFor": {
-                      "type": "string",
-                      "format": "date-time"
                     }
                   }
                 }
@@ -436,6 +405,37 @@ window.onload = function() {
           "responses": {
             "200": {
               "$ref": "#/components/responses/UploadsListResponse"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/uploads/images/{imageId}": {
+        "delete": {
+          "tags": [
+            "Admin / Upload"
+          ],
+          "summary": "Delete an uploaded image from Cloudinary",
+          "description": "Permanently deletes an image from Cloudinary by its public ID.",
+          "parameters": [
+            {
+              "name": "imageId",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Cloudinary public ID of the image"
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/DeletedResponse"
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
             },
             "500": {
               "$ref": "#/components/responses/ServerError"
@@ -1566,7 +1566,1698 @@ window.onload = function() {
           }
         }
       },
-      "/api/v1/admin/videos": {},
+      "/api/v1/admin/video-contents": {
+        "post": {
+          "tags": [
+            "Admin / Video Contents"
+          ],
+          "summary": "Create a video content entry",
+          "description": "Links a VideoAsset to a Content record of type VIDEO. Slug is auto-generated from title if omitted. Field mapping: content=description, verseReference=bible reference, image=thumbnail URL, videoAssetId=video ID.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateContentInput"
+                },
+                "example": {
+                  "title": "Noah's Ark",
+                  "content": "An animated retelling of Noah's Ark for kids ages 3-7",
+                  "verseReference": "Genesis 6-9",
+                  "duration": 15,
+                  "categoryId": "clx...",
+                  "image": "https://res.cloudinary.com/.../thumb.jpg",
+                  "videoAssetId": "clx...",
+                  "ageGroup": "PRESCHOOL",
+                  "tags": [
+                    "Bible",
+                    "Animals"
+                  ]
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Created",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Content"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "Admin / Video Contents"
+          ],
+          "summary": "List video contents",
+          "parameters": [
+            {
+              "name": "categoryId",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "DRAFT",
+                  "PUBLISHED"
+                ]
+              }
+            },
+            {
+              "name": "ageGroup",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "TODDLER",
+                  "PRESCHOOL",
+                  "EARLY",
+                  "KIDS"
+                ]
+              }
+            },
+            {
+              "name": "search",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "page",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 20
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Video contents",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/Content"
+                        }
+                      },
+                      "meta": {
+                        "type": "object",
+                        "properties": {
+                          "total": {
+                            "type": "integer"
+                          },
+                          "page": {
+                            "type": "integer"
+                          },
+                          "limit": {
+                            "type": "integer"
+                          },
+                          "totalPages": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/video-contents/{id}": {
+        "get": {
+          "tags": [
+            "Admin / Video Contents"
+          ],
+          "summary": "Get video content by ID",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Video content",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Content"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "Admin / Video Contents"
+          ],
+          "summary": "Update a video content",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateContentInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Updated",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Content"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "Admin / Video Contents"
+          ],
+          "summary": "Soft-delete a video content",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/DeletedResponse"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/video-contents/{id}/publish": {
+        "patch": {
+          "tags": [
+            "Admin / Video Contents"
+          ],
+          "summary": "Publish a video content",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Published",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Content"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/video-contents/{id}/unpublish": {
+        "patch": {
+          "tags": [
+            "Admin / Video Contents"
+          ],
+          "summary": "Unpublish a video content",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Unpublished",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Content"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/products": {
+        "get": {
+          "tags": [
+            "Admin / E-Commerce / Products"
+          ],
+          "summary": "List all products",
+          "parameters": [
+            {
+              "name": "categoryId",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "ACTIVE",
+                  "DRAFT",
+                  "OUT_OF_STOCK"
+                ]
+              }
+            },
+            {
+              "name": "search",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "page",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 20
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Products",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/Product"
+                        }
+                      },
+                      "meta": {
+                        "type": "object",
+                        "properties": {
+                          "total": {
+                            "type": "integer"
+                          },
+                          "page": {
+                            "type": "integer"
+                          },
+                          "limit": {
+                            "type": "integer"
+                          },
+                          "totalPages": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "Admin / E-Commerce / Products"
+          ],
+          "summary": "Create a product",
+          "description": "Images must be Cloudinary URLs from the upload endpoint.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProductInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Created",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Product"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/products/slug/{slug}": {
+        "get": {
+          "tags": [
+            "Admin / E-Commerce / Products"
+          ],
+          "summary": "Get product by slug",
+          "parameters": [
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Product",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Product"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/products/{id}": {
+        "get": {
+          "tags": [
+            "Admin / E-Commerce / Products"
+          ],
+          "summary": "Get product by ID",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Product",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Product"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "Admin / E-Commerce / Products"
+          ],
+          "summary": "Update a product",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateProductInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Updated",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Product"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "Admin / E-Commerce / Products"
+          ],
+          "summary": "Soft-delete a product",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/DeletedResponse"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/product-categories": {
+        "get": {
+          "tags": [
+            "Admin / E-Commerce / Categories"
+          ],
+          "summary": "List all product categories",
+          "responses": {
+            "200": {
+              "description": "Categories",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/ProductCategory"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "Admin / E-Commerce / Categories"
+          ],
+          "summary": "Create a product category",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateProductCategoryInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Created",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/ProductCategory"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/product-categories/{id}": {
+        "get": {
+          "tags": [
+            "Admin / E-Commerce / Categories"
+          ],
+          "summary": "Get product category by ID",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Category",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/ProductCategory"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "Admin / E-Commerce / Categories"
+          ],
+          "summary": "Update a product category",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateProductCategoryInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Updated",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/ProductCategory"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "Admin / E-Commerce / Categories"
+          ],
+          "summary": "Soft-delete a product category",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/DeletedResponse"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/store": {
+        "get": {
+          "tags": [
+            "Admin / Store"
+          ],
+          "summary": "Get store settings",
+          "description": "Returns the single store configuration row. Creates a default row on first call if none exists.",
+          "responses": {
+            "200": {
+              "description": "Store settings",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/StoreSettings"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "Admin / Store"
+          ],
+          "summary": "Create or update store settings",
+          "description": "Upserts the store configuration. Only one settings row can ever exist (singleton pattern).",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpsertStoreInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Store settings updated",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/StoreSettings"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/roles": {
+        "get": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "List all roles with permissions",
+          "description": "Returns all available admin roles with their permissions and user counts. Any admin can access this.",
+          "responses": {
+            "200": {
+              "description": "Roles",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/RoleWithPermissions"
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Create a new role",
+          "description": "Create a role with a name and a list of permissions. Requires MANAGE_USERS permission.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CreateRoleInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Role created",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/RoleWithPermissions"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "409": {
+              "$ref": "#/components/responses/ConflictError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/roles/{id}": {
+        "patch": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Update a role",
+          "description": "Update a role's name, description, or permissions. Permissions are replaced entirely. Requires MANAGE_USERS.",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Role ID"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UpdateRoleInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Role updated",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/RoleWithPermissions"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Delete a role",
+          "description": "Delete a role. All users assigned to this role will have their role removed. Requires MANAGE_USERS.",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Role ID"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Role deleted",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/admins": {
+        "get": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "List all users with admin roles",
+          "description": "Paginated list of all users who have a role assigned. Requires MANAGE_USERS permission.",
+          "parameters": [
+            {
+              "name": "search",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Search by name or email"
+            },
+            {
+              "name": "roleId",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Filter by role"
+            },
+            {
+              "name": "page",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 20
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Admins",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/AdminUser"
+                        }
+                      },
+                      "meta": {
+                        "type": "object",
+                        "properties": {
+                          "total": {
+                            "type": "integer"
+                          },
+                          "page": {
+                            "type": "integer"
+                          },
+                          "limit": {
+                            "type": "integer"
+                          },
+                          "totalPages": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/users/invite": {
+        "post": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Invite a new admin",
+          "description": "Sends an invitation email with a secure setup link. The admin sets their own password. Invitation expires in 48 hours.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InviteAdminInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Invitation sent",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "Invitation sent successfully"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "409": {
+              "$ref": "#/components/responses/ConflictError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/auth/invitations/{token}": {
+        "get": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Validate an invitation token",
+          "description": "Public endpoint. Returns invitation details if the token is valid, unused, and not expired.",
+          "parameters": [
+            {
+              "name": "token",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Invitation token from the email link"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Token is valid",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "valid": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "email": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/auth/invitations/accept": {
+        "post": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Accept invitation and set password",
+          "description": "Public endpoint. Creates the admin account and activates it. The token is invalidated permanently after use.",
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AcceptInvitationInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Account setup completed",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string",
+                        "example": "Account setup completed"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/users/{id}/role": {
+        "patch": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Assign a role to a user",
+          "description": "Promote a regular user to admin by assigning a role. Requires MANAGE_USERS permission.",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "User ID"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AssignRoleInput"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Role assigned",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/AdminUser"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "Admin / RBAC"
+          ],
+          "summary": "Remove a user's role",
+          "description": "Demote an admin back to a regular user by removing their role. Requires MANAGE_USERS permission.",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string"
+              },
+              "description": "User ID"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Role removed",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "message": {
+                        "type": "string"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "400": {
+              "$ref": "#/components/responses/ValidationError"
+            },
+            "404": {
+              "$ref": "#/components/responses/NotFoundError"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/users/stats": {
+        "get": {
+          "tags": [
+            "Admin / Users"
+          ],
+          "summary": "Get user statistics",
+          "description": "Returns total users, new users this month, and active users.",
+          "responses": {
+            "200": {
+              "description": "User stats",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/UserStats"
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/users": {
+        "get": {
+          "tags": [
+            "Admin / Users"
+          ],
+          "summary": "List all signed-up users",
+          "description": "Paginated list of all users with search, status filter, and sort by date joined.",
+          "parameters": [
+            {
+              "name": "search",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string"
+              },
+              "description": "Search by name or email"
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "PENDING_INVITATION",
+                  "ACTIVE",
+                  "SUSPENDED"
+                ]
+              },
+              "description": "Filter by user status"
+            },
+            {
+              "name": "sort",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "newest",
+                  "oldest"
+                ],
+                "default": "newest"
+              },
+              "description": "Sort by date joined"
+            },
+            {
+              "name": "page",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 20
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Users",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "object",
+                    "properties": {
+                      "success": {
+                        "type": "boolean",
+                        "example": true
+                      },
+                      "data": {
+                        "type": "array",
+                        "items": {
+                          "$ref": "#/components/schemas/UserProfile"
+                        }
+                      },
+                      "meta": {
+                        "type": "object",
+                        "properties": {
+                          "total": {
+                            "type": "integer"
+                          },
+                          "page": {
+                            "type": "integer"
+                          },
+                          "limit": {
+                            "type": "integer"
+                          },
+                          "totalPages": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
+      "/api/v1/admin/videos": {
+        "get": {
+          "tags": [
+            "Admin / Videos"
+          ],
+          "summary": "List all video assets",
+          "parameters": [
+            {
+              "name": "page",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 1
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "default": 20
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "$ref": "#/components/responses/VideoList"
+            },
+            "500": {
+              "$ref": "#/components/responses/ServerError"
+            }
+          }
+        }
+      },
       "/api/v1/admin/videos/{id}/status": {
         "get": {
           "tags": [
@@ -1935,6 +3626,7 @@ window.onload = function() {
             "slug",
             "content"
           ],
+          "description": "Used for stories, prayers, and video contents. For videos: content=description, verseReference=reference, image=thumbnail, videoAssetId=video ID.",
           "properties": {
             "title": {
               "type": "string",
@@ -1946,6 +3638,10 @@ window.onload = function() {
             },
             "content": {
               "type": "string"
+            },
+            "description": {
+              "type": "string",
+              "description": "Short description (used as video description for video contents)"
             },
             "duration": {
               "type": "integer",
@@ -1978,6 +3674,14 @@ window.onload = function() {
                 "type": "string"
               }
             },
+            "videoAssetId": {
+              "type": "string",
+              "description": "VideoAsset ID (required when type is VIDEO)"
+            },
+            "prayerWhen": {
+              "type": "string",
+              "description": "When to say this prayer (e.g. 'Before bed', 'In the morning')"
+            },
             "scheduledFor": {
               "type": "string",
               "format": "date-time",
@@ -1995,6 +3699,9 @@ window.onload = function() {
               "type": "string"
             },
             "content": {
+              "type": "string"
+            },
+            "description": {
               "type": "string"
             },
             "duration": {
@@ -2025,6 +3732,14 @@ window.onload = function() {
               "items": {
                 "type": "string"
               }
+            },
+            "videoAssetId": {
+              "type": "string",
+              "description": "VideoAsset ID (required when type is VIDEO)"
+            },
+            "prayerWhen": {
+              "type": "string",
+              "description": "When to say this prayer (e.g. 'Before bed', 'In the morning')"
             },
             "status": {
               "type": "string",
@@ -2057,11 +3772,16 @@ window.onload = function() {
               "type": "string",
               "enum": [
                 "BIBLE_STORY",
-                "PRAYER"
+                "PRAYER",
+                "VIDEO"
               ]
             },
             "content": {
               "type": "string"
+            },
+            "description": {
+              "type": "string",
+              "nullable": true
             },
             "duration": {
               "type": "integer",
@@ -2079,6 +3799,11 @@ window.onload = function() {
               "type": "string",
               "nullable": true
             },
+            "prayerWhen": {
+              "type": "string",
+              "nullable": true,
+              "description": "When to say this prayer (e.g. 'Before bed')"
+            },
             "status": {
               "type": "string"
             },
@@ -2094,6 +3819,13 @@ window.onload = function() {
             },
             "category": {
               "$ref": "#/components/schemas/Category"
+            },
+            "videoAssetId": {
+              "type": "string",
+              "nullable": true
+            },
+            "videoAsset": {
+              "$ref": "#/components/schemas/VideoAsset"
             },
             "tags": {
               "type": "array",
@@ -2227,7 +3959,7 @@ window.onload = function() {
             }
           }
         },
-        "Video": {
+        "VideoAsset": {
           "type": "object",
           "properties": {
             "id": {
@@ -2235,13 +3967,6 @@ window.onload = function() {
             },
             "title": {
               "type": "string"
-            },
-            "slug": {
-              "type": "string"
-            },
-            "description": {
-              "type": "string",
-              "nullable": true
             },
             "provider": {
               "type": "string",
@@ -2270,30 +3995,19 @@ window.onload = function() {
             "processingStatus": {
               "type": "string",
               "enum": [
+                "QUEUED",
+                "UPLOADING",
                 "PROCESSING",
                 "READY",
                 "FAILED"
               ]
             },
-            "status": {
-              "type": "string"
+            "uploadProgress": {
+              "type": "integer"
             },
-            "scheduledFor": {
-              "type": "string",
-              "format": "date-time",
-              "nullable": true
-            },
-            "publishedAt": {
-              "type": "string",
-              "format": "date-time",
-              "nullable": true
-            },
-            "ageGroup": {
+            "failureReason": {
               "type": "string",
               "nullable": true
-            },
-            "category": {
-              "$ref": "#/components/schemas/Category"
             },
             "uploadedBy": {
               "type": "object",
@@ -2306,17 +4020,6 @@ window.onload = function() {
                 },
                 "email": {
                   "type": "string"
-                }
-              }
-            },
-            "tags": {
-              "type": "array",
-              "items": {
-                "type": "object",
-                "properties": {
-                  "tag": {
-                    "$ref": "#/components/schemas/Tag"
-                  }
                 }
               }
             },
@@ -2335,35 +4038,724 @@ window.onload = function() {
           "properties": {
             "title": {
               "type": "string"
-            },
-            "description": {
+            }
+          }
+        },
+        "Product": {
+          "type": "object",
+          "properties": {
+            "id": {
               "type": "string"
             },
-            "categoryId": {
+            "name": {
               "type": "string"
             },
-            "ageGroup": {
-              "type": "string",
-              "enum": [
-                "TODDLER",
-                "PRESCHOOL",
-                "EARLY",
-                "KIDS"
-              ]
+            "slug": {
+              "type": "string"
             },
-            "tags": {
+            "ageRecommendation": {
               "type": "string",
-              "description": "Comma-separated tag names"
+              "nullable": true
+            },
+            "shortDescription": {
+              "type": "string",
+              "nullable": true
+            },
+            "fullDescription": {
+              "type": "string",
+              "nullable": true
+            },
+            "price": {
+              "type": "number",
+              "description": "e.g. 24.99"
+            },
+            "salePrice": {
+              "type": "number",
+              "nullable": true
+            },
+            "featuredImage": {
+              "type": "string",
+              "nullable": true
+            },
+            "inventory": {
+              "type": "integer"
             },
             "status": {
               "type": "string",
               "enum": [
+                "ACTIVE",
                 "DRAFT",
-                "PUBLISHED",
-                "SCHEDULED"
+                "OUT_OF_STOCK"
               ]
             },
-            "scheduledFor": {
+            "category": {
+              "$ref": "#/components/schemas/ProductCategory"
+            },
+            "images": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "CreateProductInput": {
+          "type": "object",
+          "required": [
+            "name",
+            "slug",
+            "price"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "example": "Prayer Bear"
+            },
+            "slug": {
+              "type": "string",
+              "example": "prayer-bear"
+            },
+            "ageRecommendation": {
+              "type": "string",
+              "example": "Ages 0-5"
+            },
+            "shortDescription": {
+              "type": "string"
+            },
+            "fullDescription": {
+              "type": "string"
+            },
+            "price": {
+              "type": "number",
+              "example": 24.99
+            },
+            "salePrice": {
+              "type": "number",
+              "example": 29.99
+            },
+            "featuredImage": {
+              "type": "string",
+              "format": "uri"
+            },
+            "images": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              },
+              "description": "Cloudinary image URLs from upload endpoint"
+            },
+            "inventory": {
+              "type": "integer",
+              "default": 0
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "DRAFT",
+                "OUT_OF_STOCK"
+              ],
+              "default": "DRAFT"
+            },
+            "categoryId": {
+              "type": "string"
+            }
+          }
+        },
+        "UpdateProductInput": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "ageRecommendation": {
+              "type": "string"
+            },
+            "shortDescription": {
+              "type": "string"
+            },
+            "fullDescription": {
+              "type": "string"
+            },
+            "price": {
+              "type": "number"
+            },
+            "salePrice": {
+              "type": "number"
+            },
+            "featuredImage": {
+              "type": "string",
+              "format": "uri"
+            },
+            "images": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "format": "uri"
+              }
+            },
+            "inventory": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "ACTIVE",
+                "DRAFT",
+                "OUT_OF_STOCK"
+              ]
+            },
+            "categoryId": {
+              "type": "string"
+            }
+          }
+        },
+        "ProductCategory": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string",
+              "nullable": true
+            },
+            "_count": {
+              "type": "object",
+              "properties": {
+                "products": {
+                  "type": "integer"
+                }
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "CreateProductCategoryInput": {
+          "type": "object",
+          "required": [
+            "name",
+            "slug"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "example": "Books"
+            },
+            "slug": {
+              "type": "string",
+              "example": "books"
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "UpdateProductCategoryInput": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "slug": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            }
+          }
+        },
+        "UserProfile": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "image": {
+              "type": "string",
+              "nullable": true
+            },
+            "phone": {
+              "type": "string",
+              "nullable": true
+            },
+            "location": {
+              "type": "string",
+              "nullable": true
+            },
+            "dateJoined": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "lastActive": {
+              "type": "string",
+              "format": "date-time",
+              "nullable": true
+            },
+            "totalOrders": {
+              "type": "integer"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "PENDING_INVITATION",
+                "ACTIVE",
+                "SUSPENDED"
+              ]
+            }
+          }
+        },
+        "UserStats": {
+          "type": "object",
+          "properties": {
+            "total": {
+              "type": "integer"
+            },
+            "newThisMonth": {
+              "type": "integer"
+            },
+            "active": {
+              "type": "integer"
+            }
+          }
+        },
+        "StoreSettings": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "example": "singleton"
+            },
+            "name": {
+              "type": "string",
+              "example": "My Store"
+            },
+            "address": {
+              "type": "string",
+              "nullable": true
+            },
+            "phone": {
+              "type": "string",
+              "nullable": true
+            },
+            "email": {
+              "type": "string",
+              "nullable": true
+            },
+            "website": {
+              "type": "string",
+              "nullable": true
+            },
+            "logoUrl": {
+              "type": "string",
+              "nullable": true
+            },
+            "baseDeliveryFee": {
+              "type": "number",
+              "example": 5
+            },
+            "freeDeliveryEnabled": {
+              "type": "boolean"
+            },
+            "freeDeliveryThreshold": {
+              "type": "number",
+              "nullable": true
+            },
+            "autoDetectLocationAndCurrency": {
+              "type": "boolean"
+            },
+            "allowManualCurrencySwitching": {
+              "type": "boolean"
+            },
+            "defaultCurrency": {
+              "type": "string",
+              "enum": [
+                "NGN",
+                "USD",
+                "GBP"
+              ]
+            },
+            "refundPolicy": {
+              "type": "string",
+              "nullable": true
+            },
+            "returnWindowDays": {
+              "type": "integer",
+              "nullable": true,
+              "example": 30
+            },
+            "processingDaysMin": {
+              "type": "integer",
+              "example": 3
+            },
+            "processingDaysMax": {
+              "type": "integer",
+              "example": 5
+            },
+            "defaultOrderStatus": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "CONFIRMED",
+                "PROCESSING",
+                "SHIPPED",
+                "DELIVERED",
+                "CANCELLED"
+              ]
+            },
+            "autoUpdateInventory": {
+              "type": "boolean"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "lastUpdatedBy": {
+              "type": "string",
+              "nullable": true,
+              "description": "Email or ID of the admin who last updated the store"
+            }
+          }
+        },
+        "UpsertStoreInput": {
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "example": "BentLab Kids Store"
+            },
+            "address": {
+              "type": "string"
+            },
+            "phone": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "website": {
+              "type": "string",
+              "format": "uri"
+            },
+            "logoUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "baseDeliveryFee": {
+              "type": "number",
+              "example": 5
+            },
+            "freeDeliveryEnabled": {
+              "type": "boolean"
+            },
+            "freeDeliveryThreshold": {
+              "type": "number",
+              "example": 100
+            },
+            "autoDetectLocationAndCurrency": {
+              "type": "boolean"
+            },
+            "allowManualCurrencySwitching": {
+              "type": "boolean"
+            },
+            "defaultCurrency": {
+              "type": "string",
+              "enum": [
+                "NGN",
+                "USD",
+                "GBP"
+              ]
+            },
+            "refundPolicy": {
+              "type": "string"
+            },
+            "returnWindowDays": {
+              "type": "integer",
+              "example": 30
+            },
+            "processingDaysMin": {
+              "type": "integer",
+              "example": 3
+            },
+            "processingDaysMax": {
+              "type": "integer",
+              "example": 5
+            },
+            "defaultOrderStatus": {
+              "type": "string",
+              "enum": [
+                "PENDING",
+                "CONFIRMED",
+                "PROCESSING",
+                "SHIPPED",
+                "DELIVERED",
+                "CANCELLED"
+              ]
+            },
+            "autoUpdateInventory": {
+              "type": "boolean"
+            }
+          }
+        },
+        "AssignRoleInput": {
+          "type": "object",
+          "required": [
+            "roleId"
+          ],
+          "properties": {
+            "roleId": {
+              "type": "string",
+              "description": "ID of the role to assign"
+            }
+          }
+        },
+        "CreateAdminInput": {
+          "type": "object",
+          "required": [
+            "email",
+            "roleId"
+          ],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email",
+              "description": "Email of the admin to invite"
+            },
+            "roleId": {
+              "type": "string",
+              "description": "ID of the role to assign"
+            }
+          }
+        },
+        "InviteAdminInput": {
+          "type": "object",
+          "required": [
+            "email",
+            "roleId"
+          ],
+          "properties": {
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "roleId": {
+              "type": "string",
+              "description": "ID of the role to assign"
+            }
+          }
+        },
+        "AcceptInvitationInput": {
+          "type": "object",
+          "required": [
+            "token",
+            "password"
+          ],
+          "properties": {
+            "token": {
+              "type": "string",
+              "description": "Invitation token from email link"
+            },
+            "password": {
+              "type": "string",
+              "format": "password",
+              "minLength": 8
+            }
+          }
+        },
+        "CreateRoleInput": {
+          "type": "object",
+          "required": [
+            "name",
+            "permissions"
+          ],
+          "properties": {
+            "name": {
+              "type": "string",
+              "example": "Inventory Manager"
+            },
+            "description": {
+              "type": "string"
+            },
+            "permissions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "MANAGE_PRODUCTS",
+                  "MANAGE_ORDERS",
+                  "MANAGE_USERS",
+                  "MANAGE_SETTINGS",
+                  "VIEW_ANALYTICS",
+                  "MANAGE_CONTENT"
+                ]
+              },
+              "example": [
+                "MANAGE_PRODUCTS",
+                "MANAGE_CONTENT"
+              ]
+            }
+          }
+        },
+        "UpdateRoleInput": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "description": {
+              "type": "string"
+            },
+            "permissions": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "MANAGE_PRODUCTS",
+                  "MANAGE_ORDERS",
+                  "MANAGE_USERS",
+                  "MANAGE_SETTINGS",
+                  "VIEW_ANALYTICS",
+                  "MANAGE_CONTENT"
+                ]
+              }
+            }
+          }
+        },
+        "RoleWithPermissions": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string",
+              "example": "Product Manager"
+            },
+            "description": {
+              "type": "string",
+              "nullable": true
+            },
+            "permissions": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "permission": {
+                    "type": "string",
+                    "enum": [
+                      "MANAGE_PRODUCTS",
+                      "MANAGE_ORDERS",
+                      "MANAGE_USERS",
+                      "MANAGE_SETTINGS",
+                      "VIEW_ANALYTICS",
+                      "MANAGE_CONTENT"
+                    ]
+                  }
+                }
+              }
+            },
+            "_count": {
+              "type": "object",
+              "properties": {
+                "users": {
+                  "type": "integer"
+                }
+              }
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "AdminUser": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "email": {
+              "type": "string",
+              "format": "email"
+            },
+            "emailVerified": {
+              "type": "boolean"
+            },
+            "image": {
+              "type": "string",
+              "nullable": true
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "PENDING_INVITATION",
+                "ACTIVE",
+                "SUSPENDED"
+              ]
+            },
+            "role": {
+              "$ref": "#/components/schemas/RoleWithPermissions"
+            },
+            "createdAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "updatedAt": {
               "type": "string",
               "format": "date-time"
             }
@@ -2560,7 +4952,7 @@ window.onload = function() {
           }
         },
         "VideoResponse": {
-          "description": "Video",
+          "description": "Video asset",
           "content": {
             "application/json": {
               "schema": {
@@ -2571,7 +4963,7 @@ window.onload = function() {
                     "example": true
                   },
                   "data": {
-                    "$ref": "#/components/schemas/Video"
+                    "$ref": "#/components/schemas/VideoAsset"
                   }
                 }
               }
@@ -2579,7 +4971,7 @@ window.onload = function() {
           }
         },
         "VideoStatus": {
-          "description": "Video upload status",
+          "description": "Video asset upload status",
           "content": {
             "application/json": {
               "schema": {
@@ -2624,7 +5016,7 @@ window.onload = function() {
           }
         },
         "VideoList": {
-          "description": "Video list",
+          "description": "Video asset list",
           "content": {
             "application/json": {
               "schema": {
@@ -2637,7 +5029,7 @@ window.onload = function() {
                   "data": {
                     "type": "array",
                     "items": {
-                      "$ref": "#/components/schemas/Video"
+                      "$ref": "#/components/schemas/VideoAsset"
                     }
                   },
                   "meta": {
@@ -2769,7 +5161,7 @@ window.onload = function() {
                           "data": {
                             "type": "array",
                             "items": {
-                              "$ref": "#/components/schemas/Video"
+                              "$ref": "#/components/schemas/VideoAsset"
                             }
                           },
                           "total": {
@@ -2863,8 +5255,32 @@ window.onload = function() {
         "description": "Upload and list images and videos"
       },
       {
+        "name": "Admin / Video Contents",
+        "description": "Manage video content entries (links VideoAssets to Content)"
+      },
+      {
         "name": "Admin / Videos",
         "description": "View, update, and delete individual videos"
+      },
+      {
+        "name": "Admin / E-Commerce / Products",
+        "description": "Manage products and inventory"
+      },
+      {
+        "name": "Admin / E-Commerce / Categories",
+        "description": "Manage product categories for e-commerce"
+      },
+      {
+        "name": "Admin / Store",
+        "description": "Manage store configuration and settings"
+      },
+      {
+        "name": "Admin / RBAC",
+        "description": "Manage admin roles, permissions, and user assignments"
+      },
+      {
+        "name": "Admin / Users",
+        "description": "View and manage signed-up users"
       }
     ]
   },

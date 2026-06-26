@@ -16,9 +16,9 @@ import {
   List,
   Pencil,
   ShoppingBag,
-  Sparkles,
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
+import { getProducts, getProductCategories, deleteProduct, Product, ProductCategory } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -32,95 +32,10 @@ interface ProductItem {
   category: string;
   status: ProductStatus;
   imageUrl?: string;
+  images: string[];
   bgGradient: string; // Background gradient or background style class for visual beauty
 }
 
-// ─── Initial Mock Data ────────────────────────────────────────────────────────
-
-const INITIAL_PRODUCTS: ProductItem[] = [
-  {
-    id: "1",
-    title: "Kids Faith Tote Bag",
-    price: 3500,
-    stock: 24,
-    category: "Accessories",
-    status: "In Stock",
-    bgGradient: "bg-pink-50",
-    imageUrl: "https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "2",
-    title: "Jesus Loves Me Socks",
-    price: 1200,
-    stock: 0,
-    category: "Apparel",
-    status: "Out of Stock",
-    bgGradient: "bg-blue-50",
-    imageUrl: "https://images.unsplash.com/photo-1582966772680-860e372bb558?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "3",
-    title: "Bible Story Book Set",
-    price: 8500,
-    stock: 12,
-    category: "Books",
-    status: "In Stock",
-    bgGradient: "bg-emerald-50",
-    imageUrl: "https://images.unsplash.com/photo-1544947950-fa07a98d237f?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "4",
-    title: "Armour of God T-shirt",
-    price: 4200,
-    stock: 48,
-    category: "Apparel",
-    status: "In Stock",
-    bgGradient: "bg-amber-50/70",
-    imageUrl: "https://images.unsplash.com/photo-1521572267360-ee0c2909d518?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "5",
-    title: "Prayer Journal for Kids",
-    price: 2800,
-    stock: 35,
-    category: "Stationery",
-    status: "In Stock",
-    bgGradient: "bg-purple-50",
-    imageUrl: "https://images.unsplash.com/photo-1531346878377-a5be20888e57?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "6",
-    title: "Bentlab Kids Backpack",
-    price: 12500,
-    stock: 8,
-    category: "Accessories",
-    status: "In Stock",
-    bgGradient: "bg-sky-50",
-    imageUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "7",
-    title: "Faith Wristband Set",
-    price: 1500,
-    stock: 0,
-    category: "Accessories",
-    status: "Out of Stock",
-    bgGradient: "bg-lime-50/50",
-    imageUrl: "https://images.unsplash.com/photo-1575410224475-d22392c10847?q=80&w=350&auto=format&fit=crop",
-  },
-  {
-    id: "8",
-    title: "God is Good Cap",
-    price: 3800,
-    stock: 0,
-    category: "Apparel",
-    status: "Draft",
-    bgGradient: "bg-amber-50/40",
-    imageUrl: "https://images.unsplash.com/photo-1588850561407-ed78c282e89b?q=80&w=350&auto=format&fit=crop",
-  },
-];
-
-const CATEGORIES = ["All Categories", "Accessories", "Apparel", "Books", "Stationery"];
 const STATUSES = ["All Statuses", "In Stock", "Out of Stock", "Draft"];
 
 // ─── Filter Dropdown Component ────────────────────────────────────────────────
@@ -193,7 +108,7 @@ function ProductsGridSkeleton() {
           100% { background-position: -200% 0; }
         }
       `}</style>
-      {Array.from({ length: 15 }).map((_, i) => (
+      {Array.from({ length: 8 }).map((_, i) => (
         <div key={i} className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm flex flex-col p-4 space-y-4">
           <SkeletonPulse className="w-full aspect-square rounded-2xl" />
           <div className="space-y-3 flex-1 flex flex-col justify-between">
@@ -230,7 +145,7 @@ function ProductsListSkeleton() {
         ))}
       </div>
       <div className="divide-y divide-zinc-50">
-        {Array.from({ length: 15 }).map((_, i) => (
+        {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="grid grid-cols-[64px_2.5fr_1fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5">
             <SkeletonPulse className="w-12 h-12 rounded-2xl" />
             <SkeletonPulse className={`h-3.5 rounded-full ${i % 2 === 0 ? "w-2/3" : "w-1/2"}`} />
@@ -248,29 +163,170 @@ function ProductsListSkeleton() {
   );
 }
 
+function ProductCard({
+  prod,
+  onEdit,
+  onDelete,
+  formatNaira,
+}: {
+  prod: ProductItem;
+  onEdit: () => void;
+  onDelete: () => void;
+  formatNaira: (amount: number) => string;
+}) {
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const images = prod.images.length > 0 ? prod.images : [];
+
+  const handlePrev = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentIdx((prev) => (prev === 0 ? images.length - 1 : prev - 1));
+  };
+
+  const handleNext = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setCurrentIdx((prev) => (prev === images.length - 1 ? 0 : prev + 1));
+  };
+
+  const currentImage = images[currentIdx];
+
+  return (
+    <div className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm flex flex-col p-4 hover:shadow-md transition-all duration-300 group">
+      {/* Image Container Card */}
+      <div className={`relative aspect-square rounded-2xl ${prod.bgGradient} flex items-center justify-center overflow-hidden mb-4 border border-zinc-50`}>
+        {currentImage ? (
+          <img
+            src={currentImage}
+            alt={prod.title}
+            onError={(e) => {
+              e.currentTarget.src = "/logogo.png";
+            }}
+            className="w-4/5 h-4/5 object-contain rounded-xl drop-shadow-md transition-transform duration-300"
+          />
+        ) : (
+          <img
+            src="/logogo.png"
+            alt={prod.title}
+            className="w-4/5 h-4/5 object-contain rounded-xl drop-shadow-md transition-transform duration-300"
+          />
+        )}
+
+        {/* Carousel controls - visible if there are multiple images */}
+        {images.length > 1 && (
+          <div className="absolute inset-x-3 top-1/2 -translate-y-1/2 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none">
+            <button
+              onClick={handlePrev}
+              type="button"
+              className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center text-zinc-700 hover:text-zinc-900 shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer pointer-events-auto"
+              title="Previous Image"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </button>
+            <button
+              onClick={handleNext}
+              type="button"
+              className="w-8 h-8 rounded-full bg-white/90 backdrop-blur-xs flex items-center justify-center text-zinc-700 hover:text-zinc-900 shadow-sm hover:scale-105 active:scale-95 transition-all cursor-pointer pointer-events-auto"
+              title="Next Image"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Dot Indicators at the bottom of image container */}
+        {images.length > 1 && (
+          <div className="absolute bottom-3 inset-x-0 flex justify-center gap-1.5 pointer-events-none">
+            {images.map((_, i) => (
+              <span
+                key={i}
+                className={`w-1.5 h-1.5 rounded-full transition-all duration-200 ${
+                  i === currentIdx ? "bg-[#B31046] w-3" : "bg-zinc-300"
+                }`}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Top Badges */}
+        <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-xs px-2.5 py-0.5 rounded-md text-[9px] font-extrabold text-zinc-500 shadow-xs uppercase tracking-wide">
+          {prod.category}
+        </span>
+
+        <span
+          className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-extrabold tracking-wider uppercase shadow-xs ${
+            prod.status === "In Stock"
+              ? "bg-emerald-100 text-emerald-700"
+              : prod.status === "Out of Stock"
+              ? "bg-red-100 text-red-700"
+              : "bg-zinc-200/80 text-zinc-700"
+          }`}
+        >
+          {prod.status === "In Stock" ? "In Stock" : prod.status === "Out of Stock" ? "Out of Stock" : "Draft"}
+        </span>
+      </div>
+
+      {/* Details */}
+      <div className="space-y-3 flex-1 flex flex-col justify-between">
+        <div>
+          <h3 className="text-sm font-extrabold text-zinc-800 line-clamp-2 leading-snug">{prod.title}</h3>
+          <div className="flex items-center justify-between mt-2 pt-0.5">
+            <span className="text-base font-black text-[#B31046]">{formatNaira(prod.price)}</span>
+            <span className="text-[11px] font-bold text-zinc-400">
+              Stock: {prod.status === "Draft" ? "--" : prod.stock}
+            </span>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex items-center gap-2 pt-2">
+          <button
+            onClick={onEdit}
+            type="button"
+            className="flex-1 py-2 bg-[#FFF0F2]/50 hover:bg-[#FFF0F2] text-[#B31046] font-extrabold text-xs rounded-full transition-all text-center cursor-pointer select-none active:scale-[0.98]"
+          >
+            Edit
+          </button>
+          <button
+            onClick={onDelete}
+            type="button"
+            className="p-2 bg-zinc-100/80 hover:bg-[#FFF0F2] text-[#B31046] hover:text-[#B31046]/80 rounded-full border border-zinc-200/60 hover:border-transparent transition-all cursor-pointer"
+            title="Delete Product"
+          >
+            <Trash2 className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Products Component ──────────────────────────────────────────────────
 
 export default function ProductsPage() {
   const router = useRouter();
-  const [products, setProducts] = useState<ProductItem[]>(INITIAL_PRODUCTS);
+  const [products, setProducts] = useState<ProductItem[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Dynamic categories list
+  const [apiCategories, setApiCategories] = useState<ProductCategory[]>([]);
+  
+  // Filter settings
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("All Categories");
   const [selectedStatus, setSelectedStatus] = useState("All Statuses");
+  
+  // Pagination
   const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProducts, setTotalProducts] = useState(0);
+
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [deletingProduct, setDeletingProduct] = useState<ProductItem | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
-  const itemsPerPage = 15;
+  const itemsPerPage = 12;
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setLoading(false);
-    }, 600);
-    return () => clearTimeout(timer);
-  }, []);
-
+  // Add toast helper
   const addToast = (type: "success" | "error" | "info", message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
     setToasts((prev) => [...prev, { id, type, message }]);
@@ -283,30 +339,152 @@ export default function ProductsPage() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  const handleDelete = () => {
-    if (!deletingProduct) return;
-    setProducts((prev) => prev.filter((p) => p.id !== deletingProduct.id));
-    addToast("success", `Product "${deletingProduct.title}" has been deleted.`);
-    setDeletingProduct(null);
+  // Helper mapping function to maintain visual representation
+  const mapProductToItem = (p: Product): ProductItem => {
+    let mappedStatus: ProductStatus = "In Stock";
+    if (p.status === "DRAFT") mappedStatus = "Draft";
+    else if (p.status === "OUT_OF_STOCK") mappedStatus = "Out of Stock";
+
+    const gradients = [
+      "bg-pink-50",
+      "bg-blue-50",
+      "bg-emerald-50",
+      "bg-amber-50/70",
+      "bg-purple-50",
+      "bg-sky-50",
+      "bg-lime-50/50",
+      "bg-amber-50/40"
+    ];
+    const hash = p.name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    const bgGradient = gradients[hash % gradients.length];
+
+    const imageUrls: string[] = [];
+    if (p.featuredImage) {
+      imageUrls.push(p.featuredImage);
+    }
+    if (p.images && p.images.length > 0) {
+      p.images.forEach((img) => {
+        if (img.url) {
+          imageUrls.push(img.url);
+        }
+      });
+    }
+    if (imageUrls.length === 0) {
+      imageUrls.push("/logogo.png");
+    }
+
+    return {
+      id: p.id,
+      title: p.name,
+      price: p.price,
+      stock: p.inventory,
+      category: p.category ? p.category.name : "Uncategorized",
+      status: mappedStatus,
+      imageUrl: p.featuredImage || "/logogo.png",
+      images: imageUrls,
+      bgGradient: bgGradient,
+    };
   };
 
-  // Filter & Search
-  const filtered = products.filter((prod) => {
-    const matchesSearch = prod.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      prod.category.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesCategory = selectedCategory === "All Categories" || prod.category === selectedCategory;
-    
-    let matchesStatus = true;
-    if (selectedStatus !== "All Statuses") {
-      matchesStatus = prod.status === selectedStatus;
-    }
-    return matchesSearch && matchesCategory && matchesStatus;
-  });
+  // Fetch product categories on mount
+  useEffect(() => {
+    getProductCategories()
+      .then((res) => {
+        if (res && res.success) {
+          let list = res.data;
+          const hasUncategorized = list.some((c) => c.slug === "uncategorized");
+          if (!hasUncategorized) {
+            list = [
+              {
+                id: "uncategorized",
+                name: "Uncategorized",
+                slug: "uncategorized",
+                description: "Default category",
+                createdAt: "",
+                updatedAt: "",
+                _count: { products: 0 },
+              },
+              ...list,
+            ];
+          }
+          setApiCategories(list);
+        }
+      })
+      .catch((err) => {
+        console.error("Error loading categories", err);
+      });
+  }, []);
 
-  const totalProducts = filtered.length;
-  const totalPages = Math.max(1, Math.ceil(totalProducts / itemsPerPage));
-  const startIndex = (page - 1) * itemsPerPage;
-  const paginatedProducts = filtered.slice(startIndex, startIndex + itemsPerPage);
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Fetch products query from backend
+  const fetchProductsList = async () => {
+    setLoading(true);
+    try {
+      let apiStatus: string | undefined = undefined;
+      if (selectedStatus === "In Stock") apiStatus = "ACTIVE";
+      else if (selectedStatus === "Out of Stock") apiStatus = "OUT_OF_STOCK";
+      else if (selectedStatus === "Draft") apiStatus = "DRAFT";
+
+      let apiCategoryId: string | undefined = undefined;
+      if (selectedCategory !== "All Categories") {
+        const matched = apiCategories.find((c) => c.name === selectedCategory);
+        if (matched) {
+          apiCategoryId = matched.id;
+        }
+      }
+
+      const res = await getProducts({
+        page,
+        limit: itemsPerPage,
+        search: debouncedSearch || undefined,
+        categoryId: apiCategoryId,
+        status: apiStatus,
+      });
+
+      if (res && res.success) {
+        const mapped = res.data.map(mapProductToItem);
+        setProducts(mapped);
+        setTotalProducts(res.meta.total);
+        setTotalPages(res.meta.totalPages || 1);
+      }
+    } catch (err: any) {
+      console.error("Error loading products list", err);
+      addToast("error", err?.message || "Failed to load products from backend.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Trigger query load when dependencies change
+  useEffect(() => {
+    fetchProductsList();
+  }, [page, selectedCategory, selectedStatus, debouncedSearch, apiCategories]);
+
+  // Delete product action call
+  const handleDelete = async () => {
+    if (!deletingProduct) return;
+    try {
+      const res = await deleteProduct(deletingProduct.id);
+      if (res && res.success) {
+        addToast("success", `Product "${deletingProduct.title}" has been deleted.`);
+        fetchProductsList();
+      } else {
+        addToast("error", "Failed to delete product.");
+      }
+    } catch (err: any) {
+      console.error("Error deleting product", err);
+      addToast("error", err?.message || "Failed to delete product.");
+    } finally {
+      setDeletingProduct(null);
+    }
+  };
 
   const formatNaira = (amount: number) => {
     return new Intl.NumberFormat("en-NG", {
@@ -316,6 +494,8 @@ export default function ProductsPage() {
       maximumFractionDigits: 0,
     }).format(amount).replace("NGN", "₦");
   };
+
+  const CATEGORIES = ["All Categories", ...apiCategories.map((c) => c.name)];
 
   return (
     <div className="min-h-full p-8 space-y-6 font-sans relative">
@@ -402,78 +582,18 @@ export default function ProductsPage() {
       {/* ── Main Render Block ── */}
       {loading ? (
         viewMode === "list" ? <ProductsListSkeleton /> : <ProductsGridSkeleton />
-      ) : paginatedProducts.length > 0 ? (
+      ) : products.length > 0 ? (
         viewMode === "grid" ? (
           /* Grid Mode */
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {paginatedProducts.map((prod) => (
-              <div
+            {products.map((prod) => (
+              <ProductCard
                 key={prod.id}
-                className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm flex flex-col p-4 hover:shadow-md transition-all duration-300 group"
-              >
-                {/* Image Container Card */}
-                <div className={`relative aspect-square rounded-2xl ${prod.bgGradient} flex items-center justify-center overflow-hidden mb-4 border border-zinc-50`}>
-                  {prod.imageUrl ? (
-                    <img
-                      src={prod.imageUrl}
-                      alt={prod.title}
-                      className="w-4/5 h-4/5 object-contain rounded-xl drop-shadow-md group-hover:scale-105 transition-transform duration-300"
-                    />
-                  ) : (
-                    <div className="flex flex-col items-center gap-2 text-zinc-300">
-                      <ImageIcon className="w-10 h-10" />
-                      <span className="text-[10px] font-bold">No Image</span>
-                    </div>
-                  )}
-
-                  {/* Top Badges */}
-                  <span className="absolute top-3 left-3 bg-white/90 backdrop-blur-xs px-2.5 py-0.5 rounded-md text-[9px] font-extrabold text-zinc-500 shadow-xs uppercase tracking-wide">
-                    {prod.category}
-                  </span>
-
-                  <span
-                    className={`absolute top-3 right-3 px-2 py-0.5 rounded-md text-[9px] font-extrabold tracking-wider uppercase shadow-xs ${
-                      prod.status === "In Stock"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : prod.status === "Out of Stock"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-zinc-100 text-zinc-600"
-                    }`}
-                  >
-                    {prod.status === "In Stock" ? "In Stock" : prod.status === "Out of Stock" ? "Out of Stock" : "Draft"}
-                  </span>
-                </div>
-
-                {/* Details */}
-                <div className="space-y-3 flex-1 flex flex-col justify-between">
-                  <div>
-                    <h3 className="text-sm font-extrabold text-zinc-800 line-clamp-2 leading-snug">{prod.title}</h3>
-                    <div className="flex items-center justify-between mt-2 pt-0.5">
-                      <span className="text-base font-black text-[#B31046]">{formatNaira(prod.price)}</span>
-                      <span className="text-[11px] font-bold text-zinc-400">
-                        Stock: {prod.status === "Draft" ? "--" : prod.stock}
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Actions */}
-                  <div className="flex items-center gap-2 pt-2">
-                    <button
-                      onClick={() => router.push(`/products/new?edit=${prod.id}`)}
-                      className="flex-1 py-2 bg-[#FFF0F2]/50 hover:bg-[#FFF0F2] text-[#B31046] font-extrabold text-xs rounded-full transition-all text-center cursor-pointer select-none active:scale-[0.98]"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => setDeletingProduct(prod)}
-                      className="p-2 bg-zinc-50 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] rounded-full border border-zinc-100 hover:border-transparent transition-all cursor-pointer"
-                      title="Delete Product"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
+                prod={prod}
+                onEdit={() => router.push(`/products/new?edit=${prod.id}`)}
+                onDelete={() => setDeletingProduct(prod)}
+                formatNaira={formatNaira}
+              />
             ))}
           </div>
         ) : (
@@ -485,15 +605,18 @@ export default function ProductsPage() {
               ))}
             </div>
             <div className="divide-y divide-zinc-50">
-              {paginatedProducts.map((prod) => (
+              {products.map((prod) => (
                 <div key={prod.id} className="grid grid-cols-[64px_2.5fr_1fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5 hover:bg-zinc-50/50 transition-colors group">
                   {/* Image */}
                   <div className={`w-12 h-12 rounded-2xl ${prod.bgGradient} flex items-center justify-center overflow-hidden border border-zinc-100/50 shrink-0`}>
-                    {prod.imageUrl ? (
-                      <img src={prod.imageUrl} alt={prod.title} className="w-4/5 h-4/5 object-contain" />
-                    ) : (
-                      <ImageIcon className="w-5 h-5 text-zinc-300" />
-                    )}
+                    <img
+                      src={prod.imageUrl || "/logogo.png"}
+                      alt={prod.title}
+                      onError={(e) => {
+                        e.currentTarget.src = "/logogo.png";
+                      }}
+                      className="w-4/5 h-4/5 object-contain"
+                    />
                   </div>
 
                   {/* Title */}
@@ -519,7 +642,7 @@ export default function ProductsPage() {
                           ? "bg-emerald-100 text-emerald-700"
                           : prod.status === "Out of Stock"
                           ? "bg-red-100 text-red-700"
-                          : "bg-zinc-100 text-zinc-500"
+                          : "bg-zinc-200/85 text-zinc-700"
                       }`}
                     >
                       {prod.status}
@@ -533,14 +656,14 @@ export default function ProductsPage() {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => router.push(`/products/new?edit=${prod.id}`)}
-                      className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] hover:border-transparent transition-all cursor-pointer"
+                      className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-600 hover:text-[#B31046] hover:border-transparent transition-all cursor-pointer"
                       title="Edit"
                     >
                       <Pencil className="w-3.5 h-3.5" />
                     </button>
                     <button
                       onClick={() => setDeletingProduct(prod)}
-                      className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] hover:border-transparent transition-all cursor-pointer"
+                      className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-600 hover:text-[#B31046] hover:border-transparent transition-all cursor-pointer"
                       title="Delete"
                     >
                       <Trash2 className="w-3.5 h-3.5" />
@@ -617,7 +740,7 @@ export default function ProductsPage() {
 
             <div className="flex items-start gap-4">
               <div className="w-12 h-12 rounded-full bg-red-50 flex items-center justify-center shrink-0">
-                <AlertTriangle className="w-6 h-6 text-red-650" />
+                <AlertTriangle className="w-6 h-6 text-red-600" />
               </div>
               <div className="space-y-1">
                 <h3 className="text-base font-extrabold text-zinc-900">Delete Product?</h3>

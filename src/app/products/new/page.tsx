@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import NavigationGuard from "@/components/NavigationGuard";
 import {
   ArrowLeft,
   X,
@@ -15,7 +17,16 @@ import {
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import RichTextEditor from "@/components/RichTextEditor";
-import { resolveAssetUrl } from "@/lib/api";
+import {
+  resolveAssetUrl,
+  getProductById,
+  createProduct,
+  updateProduct,
+  getProductCategories,
+  ProductCategory,
+  ProductApiStatus,
+  CreateProductPayload,
+} from "@/lib/api";
 import MediaSelectModal, { MediaFile } from "@/components/MediaSelectModal";
 
 type PublishStatus = "Active" | "Draft" | "Out of Stock";
@@ -39,13 +50,6 @@ function getAvatarBg(title: string) {
   return colors[sum % colors.length];
 }
 
-const MOCK_PRODUCTS = [
-  { id: "1", title: "Kids Faith Tote Bag", price: "3500", salesPrice: "3000", inventory: "24", ageRecommendation: "3-8 years", shortDescription: "A catchy one-liner about this beautiful pink tote bag.", category: "Accessories", status: "Active" as PublishStatus, description: "A beautiful pink tote bag with the words 'Shine your light' written on it. Perfect for kids to carry their bible and writing materials." },
-  { id: "2", title: "Jesus Loves Me Socks", price: "1200", salesPrice: "", inventory: "0", ageRecommendation: "All ages", shortDescription: "Soft, comfortable socks in pink and light blue.", category: "Apparel", status: "Out of Stock" as PublishStatus, description: "Soft, comfortable socks in pink and light blue with heart details." },
-];
-
-const CATEGORIES = ["Accessories", "Apparel", "Books", "Stationery"];
-
 // ─── Skeleton Screen Helpers ──────────────────────────────────────────────────
 
 function SkeletonPulse({ className }: { className: string }) {
@@ -66,6 +70,21 @@ function CreateProductForm() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
 
+  // Keep track of initial loaded state to perform dirty checking
+  const initialValuesRef = useRef({
+    title: "",
+    ageRecommendation: "",
+    shortDescription: "",
+    description: "",
+    price: "",
+    salesPrice: "",
+    inventory: "",
+    status: "Active" as PublishStatus,
+    category: "",
+    featuredImageUrl: null as string | null,
+    additionalImageUrls: [null, null, null, null] as (string | null)[],
+  });
+
   // State
   const [title, setTitle]                         = useState("");
   const [ageRecommendation, setAgeRecommendation] = useState("");
@@ -75,8 +94,11 @@ function CreateProductForm() {
   const [salesPrice, setSalesPrice]               = useState("");
   const [inventory, setInventory]                 = useState("");
   const [status, setStatus]                       = useState<PublishStatus>("Active");
-  const [category, setCategory]                   = useState("");
+  const [category, setCategory]                   = useState(""); // Represents categoryId
   const [featuredImage, setFeaturedImage]         = useState<MediaFile | null>(null);
+  
+  // Dynamic Categories
+  const [apiCategories, setApiCategories] = useState<ProductCategory[]>([]);
   
   // 4 additional images slots
   const [additionalImages, setAdditionalImages]   = useState<(MediaFile | null)[]>([null, null, null, null]);
@@ -84,13 +106,24 @@ function CreateProductForm() {
 
   const [isSubmitting, setIsSubmitting]   = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+
+  const isDirty =
+    title !== initialValuesRef.current.title ||
+    ageRecommendation !== initialValuesRef.current.ageRecommendation ||
+    shortDescription !== initialValuesRef.current.shortDescription ||
+    description !== initialValuesRef.current.description ||
+    price !== initialValuesRef.current.price ||
+    salesPrice !== initialValuesRef.current.salesPrice ||
+    inventory !== initialValuesRef.current.inventory ||
+    status !== initialValuesRef.current.status ||
+    category !== initialValuesRef.current.category ||
+    (featuredImage?.url || null) !== (initialValuesRef.current.featuredImageUrl || null) ||
+    JSON.stringify(additionalImages.map(img => img?.url || null)) !== JSON.stringify(initialValuesRef.current.additionalImageUrls);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [mediaModalMode, setMediaModalMode] = useState<"featured" | "additional" | "editor">("featured");
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
   const editorImageInsert = useRef<((url: string) => void) | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-
 
   const addToast = (type: "success" | "error" | "info", msg: string) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -99,54 +132,111 @@ function CreateProductForm() {
   };
   const removeToast = (id: string) => setToasts((p) => p.filter((t) => t.id !== id));
 
+  // Load categories on mount
+  useEffect(() => {
+    getProductCategories()
+      .then((res) => {
+        if (res && res.success) {
+          let list = res.data;
+          const hasUncategorized = list.some((c) => c.slug === "uncategorized");
+          if (!hasUncategorized) {
+            list = [
+              {
+                id: "uncategorized",
+                name: "Uncategorized",
+                slug: "uncategorized",
+                description: "Default category",
+                createdAt: "",
+                updatedAt: "",
+                _count: { products: 0 },
+              },
+              ...list,
+            ];
+          }
+          setApiCategories(list);
+        }
+      })
+      .catch((err) => {
+        console.error("Error loading categories", err);
+      });
+  }, []);
+
   // Edit hydration
   useEffect(() => {
     if (!editId) {
-      // Default initial states if new product
       setAgeRecommendation("");
       setShortDescription("");
       return;
     }
     setIsLoadingDetails(true);
-    const timer = setTimeout(() => {
-      const found = MOCK_PRODUCTS.find((p) => p.id === editId);
-      if (found) {
-        setTitle(found.title);
-        setPrice(found.price);
-        setSalesPrice(found.salesPrice);
-        setInventory(found.inventory);
-        setAgeRecommendation(found.ageRecommendation);
-        setShortDescription(found.shortDescription);
-        setCategory(found.category);
-        setDescription(found.description);
-        setStatus(found.status);
-        
-        // Setup mock featured image
-        setFeaturedImage({
-          id: `mock-img-${found.id}`,
-          name: `${found.title.toLowerCase().replace(/ /g, "_")}.jpg`,
-          gradient: getAvatarBg(found.title),
-          type: "JPG",
-          url: `https://images.unsplash.com/photo-1544816155-12df9643f363?q=80&w=350` // placeholder fallback
-        });
+    getProductById(editId)
+      .then((res) => {
+        if (res && res.success && res.data) {
+          const found = res.data;
+          setTitle(found.name);
+          setPrice(String(found.price));
+          setSalesPrice(found.salePrice ? String(found.salePrice) : "");
+          setInventory(String(found.inventory));
+          setAgeRecommendation(found.ageRecommendation || "");
+          setShortDescription(found.shortDescription || "");
+          setCategory(found.category ? found.category.id : "");
+          setDescription(found.fullDescription || "");
+          
+          let mappedStatus: PublishStatus = "Active";
+          if (found.status === "DRAFT") mappedStatus = "Draft";
+          else if (found.status === "OUT_OF_STOCK") mappedStatus = "Out of Stock";
+          setStatus(mappedStatus);
+          
+          if (found.featuredImage) {
+            setFeaturedImage({
+              id: `img-${found.id}`,
+              name: "featured_image",
+              gradient: getAvatarBg(found.name),
+              type: "JPG",
+              url: found.featuredImage
+            });
+          } else {
+            setFeaturedImage(null);
+          }
 
-        // Setup mock additional images
-        setAdditionalImages([
-          {
-            id: `mock-add-1`,
-            name: "product_detail_1.jpg",
-            gradient: "from-sky-300 via-indigo-400 to-violet-500",
-            type: "JPG",
-            url: "https://images.unsplash.com/photo-1511556532299-8f662fc26c06?q=80&w=250"
-          },
-          null,
-          null,
-          null
-        ]);
-      }
-      setIsLoadingDetails(false);
-    }, 500);
-    return () => clearTimeout(timer);
+          const additional = [null, null, null, null] as (MediaFile | null)[];
+          const additionalUrls = [null, null, null, null] as (string | null)[];
+          if (found.images && found.images.length > 0) {
+            found.images.slice(0, 4).forEach((img, idx) => {
+              additional[idx] = {
+                id: img.id,
+                name: `image_${idx + 1}`,
+                gradient: getAvatarBg(found.name),
+                type: "JPG",
+                url: img.url
+              };
+              additionalUrls[idx] = img.url;
+            });
+          }
+          setAdditionalImages(additional);
+
+          initialValuesRef.current = {
+            title: found.name || "",
+            ageRecommendation: found.ageRecommendation || "",
+            shortDescription: found.shortDescription || "",
+            description: found.fullDescription || "",
+            price: String(found.price),
+            salesPrice: found.salePrice ? String(found.salePrice) : "",
+            inventory: String(found.inventory),
+            status: mappedStatus,
+            category: found.category ? found.category.id : "",
+            featuredImageUrl: found.featuredImage || null,
+            additionalImageUrls: additionalUrls,
+          };
+        }
+      })
+      .catch((err: any) => {
+        console.error("Error hydrating product", err);
+        addToast("error", "Failed to retrieve product details from API.");
+      })
+      .finally(() => {
+        setIsLoadingDetails(false);
+      });
   }, [editId]);
 
   const handleEditorImageRequest = useCallback((insert: (url: string) => void) => {
@@ -194,17 +284,116 @@ function CreateProductForm() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSaveAsDraft = async (): Promise<boolean> => {
+    try {
+      let selectedCategoryId = category;
+      if (!selectedCategoryId) {
+        const uncategorized = apiCategories.find((c) => c.slug === "uncategorized");
+        selectedCategoryId = uncategorized?.id || "uncategorized";
+      }
+
+      const additionalUrls = additionalImages
+        .filter((img): img is MediaFile => img !== null)
+        .map((img) => img.url)
+        .filter((url): url is string => !!url);
+
+      const payload: CreateProductPayload = {
+        name: (title || "Untitled Product").trim(),
+        price: Math.max(0.01, parseFloat(price) || 0.01),
+        salePrice: salesPrice ? Math.max(0.01, parseFloat(salesPrice) || 0.01) : undefined,
+        inventory: Math.max(0, parseInt(inventory, 10) || 0),
+        ageRecommendation: ageRecommendation.trim() || undefined,
+        shortDescription: shortDescription.trim() || undefined,
+        fullDescription: description || undefined,
+        categoryId: selectedCategoryId,
+        status: "DRAFT",
+        featuredImage: featuredImage?.url || undefined,
+        images: additionalUrls,
+      };
+
+      if (editId) {
+        const res = await updateProduct(editId, payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      } else {
+        const res = await createProduct(payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      }
+      addToast("error", "Failed to save draft.");
+      return false;
+    } catch (err: any) {
+      console.error("Failed to save draft:", JSON.stringify(err));
+      const validationDetails = err?.errors && Array.isArray(err.errors)
+        ? ": " + err.errors.map((e: any) => `${e.path || e.field || ""}: ${e.message || ""}`).join(", ")
+        : "";
+      addToast("error", (err?.message || "Failed to save draft") + validationDetails);
+      return false;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) { addToast("error", "Product name is required."); return; }
     if (!price || parseFloat(price) <= 0) { addToast("error", "Please enter a valid price."); return; }
+
+    let selectedCategoryId = category;
+    if (!selectedCategoryId) {
+      const uncategorized = apiCategories.find((c) => c.slug === "uncategorized");
+      selectedCategoryId = uncategorized?.id || "uncategorized";
+    }
     
     setIsSubmitting(true);
-    setTimeout(() => {
+    try {
+      let apiStatus: ProductApiStatus = "ACTIVE";
+      if (status === "Draft") apiStatus = "DRAFT";
+      else if (status === "Out of Stock") apiStatus = "OUT_OF_STOCK";
+
+      const slug = title
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/(^-|-$)/g, "");
+
+      const additionalUrls = additionalImages
+        .filter((img): img is MediaFile => img !== null)
+        .map((img) => img.url)
+        .filter((url): url is string => !!url);
+
+      const payload: CreateProductPayload = {
+        name: title,
+        slug,
+        ageRecommendation: ageRecommendation || undefined,
+        shortDescription: shortDescription || undefined,
+        fullDescription: description || undefined,
+        price: parseFloat(price),
+        salePrice: salesPrice ? parseFloat(salesPrice) : undefined,
+        featuredImage: featuredImage?.url || undefined,
+        images: additionalUrls,
+        inventory: parseInt(inventory) || 0,
+        status: apiStatus,
+        categoryId: selectedCategoryId,
+      };
+
+      const res = editId
+        ? await updateProduct(editId, payload)
+        : await createProduct(payload);
+
+      if (res && res.success) {
+        addToast("success", editId ? `Product "${title}" updated successfully!` : `Product "${title}" added to store!`);
+        setTimeout(() => router.push("/products"), 1200);
+      } else {
+        addToast("error", "Failed to save product details.");
+      }
+    } catch (err: any) {
+      console.error("Error saving product details", err);
+      addToast("error", err?.message || "Failed to save product details.");
+    } finally {
       setIsSubmitting(false);
-      addToast("success", editId ? `Product "${title}" updated successfully!` : `Product "${title}" added to store!`);
-      setTimeout(() => router.push("/products"), 1200);
-    }, 1000);
+    }
   };
 
   const inputCls = "w-full bg-[#FFF0F2]/20 border border-[#FFF0F2]/60 hover:bg-[#FFF0F2]/30 focus:bg-white focus:border-[#B31046] focus:ring-2 focus:ring-[#B31046]/5 px-5 py-3.5 rounded-2xl text-sm font-semibold text-zinc-900 placeholder-zinc-400 outline-none transition-all";
@@ -224,13 +413,12 @@ function CreateProductForm() {
             {editId ? "Update details of this product in store catalog" : "Add a new product to the Bentlab Kids store"}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/products")}
+        <Link
+          href="/products"
           className="px-6 py-2.5 border border-zinc-200 hover:bg-zinc-50 text-zinc-700 font-bold text-xs rounded-full transition-all cursor-pointer shadow-xs"
         >
           Cancel
-        </button>
+        </Link>
       </header>
 
       {isLoadingDetails ? (
@@ -488,6 +676,7 @@ function CreateProductForm() {
                   <span className="absolute left-5 top-1/2 -translate-y-1/2 text-sm font-extrabold text-zinc-400 select-none">₦</span>
                   <input
                     type="number"
+                    step="any"
                     placeholder="0.00"
                     value={price}
                     onChange={(e) => setPrice(e.target.value)}
@@ -503,6 +692,7 @@ function CreateProductForm() {
                   <span className="absolute left-5 top-1/2 -translate-y-1/2 text-sm font-extrabold text-zinc-400 select-none">₦</span>
                   <input
                     type="number"
+                    step="any"
                     placeholder="0.00"
                     value={salesPrice}
                     onChange={(e) => setSalesPrice(e.target.value)}
@@ -539,8 +729,12 @@ function CreateProductForm() {
                     onChange={(e) => setCategory(e.target.value)}
                     className="w-full bg-[#FFF0F2]/20 border border-[#FFF0F2]/60 hover:bg-[#FFF0F2]/30 focus:bg-white focus:border-[#B31046] focus:ring-2 focus:ring-[#B31046]/5 px-4 py-3.5 rounded-2xl text-xs font-semibold text-zinc-900 outline-none transition-all appearance-none cursor-pointer"
                   >
-                    <option value="" disabled>Select Category</option>
-                    {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+                    <option value="">Select Category (Defaults to Uncategorized)</option>
+                    {apiCategories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </option>
+                    ))}
                   </select>
                   <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
                 </div>
@@ -567,6 +761,12 @@ function CreateProductForm() {
             : "Select Additional Image"
         }
         type="image"
+      />
+
+      <NavigationGuard
+        isDirty={isDirty && !isSubmitting}
+        onSaveAsDraft={handleSaveAsDraft}
+        onDiscard={() => {}}
       />
     </div>
   );

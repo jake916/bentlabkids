@@ -6,6 +6,7 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import Link from "@tiptap/extension-link";
 import Image from "@tiptap/extension-image";
+import { TextSelection } from "@tiptap/pm/state";
 import {
   Bold,
   Italic,
@@ -203,6 +204,136 @@ export default function RichTextEditor({
     });
   }, [editor, onImageRequest]);
 
+  // Helper to split paragraph/block when toggling block format (H1, H2) on a text selection.
+  // NOTE: blockquote is a ProseMirror *container* node, not a textblock, so it cannot be used
+  // with setBlockType(). It is always handled via toggleBlockquote() and returns early.
+  const runBlockCommandWithSplit = useCallback((type: "heading" | "paragraph" | "blockquote" | "bulletList" | "orderedList", attrs: Record<string, any> = {}) => {
+    if (!editor) return;
+
+    const { from, to, empty } = editor.state.selection;
+
+    // Blockquote wraps content — delegate to TipTap's built-in command.
+    // If the selection is a substring inside a single block, split the block first so
+    // that only the selected text is wrapped in the blockquote.
+    if (type === "blockquote" || type === "bulletList" || type === "orderedList") {
+      if (empty) {
+        if (type === "blockquote") {
+          editor.chain().focus().toggleBlockquote().run();
+        } else if (type === "bulletList") {
+          editor.chain().focus().toggleBulletList().run();
+        } else if (type === "orderedList") {
+          editor.chain().focus().toggleOrderedList().run();
+        }
+        return;
+      }
+
+      const $from = editor.state.doc.resolve(from);
+      const $to = editor.state.doc.resolve(to);
+      const isSameBlock = $from.depth === $to.depth && $from.parent === $to.parent;
+      const isStartOfBlock = $from.parentOffset === 0;
+      const isEndOfBlock = $to.parentOffset === $to.parent.content.size;
+
+      if (!isSameBlock || (isStartOfBlock && isEndOfBlock)) {
+        if (type === "blockquote") {
+          editor.chain().focus().toggleBlockquote().run();
+        } else if (type === "bulletList") {
+          editor.chain().focus().toggleBulletList().run();
+        } else if (type === "orderedList") {
+          editor.chain().focus().toggleOrderedList().run();
+        }
+        return;
+      }
+
+      // Split the paragraph around the selection, then toggle blockquote/list on the isolated text
+      let chain = editor.chain().focus()
+        .command(({ tr, dispatch }) => {
+          if (dispatch) {
+            if (!isEndOfBlock) {
+              tr.split(to);
+            }
+            if (!isStartOfBlock) {
+              tr.split(from);
+            }
+            const mappedFrom = tr.mapping.map(from, 1);
+            const mappedTo = tr.mapping.map(to, -1);
+            tr.setSelection(TextSelection.create(tr.doc, mappedFrom, mappedTo));
+          }
+          return true;
+        });
+
+      if (type === "blockquote") {
+        chain = chain.toggleBlockquote();
+      } else if (type === "bulletList") {
+        chain = chain.toggleBulletList();
+      } else if (type === "orderedList") {
+        chain = chain.toggleOrderedList();
+      }
+
+      chain.run();
+      return;
+    }
+
+
+    
+    // Determine active state to support toggling headings back to paragraph
+    let targetType = type;
+    let targetAttrs = attrs;
+    
+    if (type === "heading" && editor.isActive("heading", attrs)) {
+      targetType = "paragraph";
+      targetAttrs = {};
+    }
+
+    if (empty) {
+      if (targetType === "paragraph") {
+        editor.chain().focus().setParagraph().run();
+      } else if (targetType === "heading") {
+        editor.chain().focus().toggleHeading(targetAttrs as any).run();
+      }
+      return;
+    }
+
+    const $from = editor.state.doc.resolve(from);
+    const $to = editor.state.doc.resolve(to);
+    const isSameBlock = $from.depth === $to.depth && $from.parent === $to.parent;
+    const isStartOfBlock = $from.parentOffset === 0;
+    const isEndOfBlock = $to.parentOffset === $to.parent.content.size;
+
+    if (!isSameBlock || (isStartOfBlock && isEndOfBlock)) {
+      if (targetType === "paragraph") {
+        editor.chain().focus().setParagraph().run();
+      } else if (targetType === "heading") {
+        editor.chain().focus().toggleHeading(targetAttrs as any).run();
+      }
+      return;
+    }
+
+    // Split block right-to-left (end first, then start) so the `from` index stays valid
+    editor.chain().focus()
+      .command(({ tr, dispatch }) => {
+        if (dispatch) {
+          if (!isEndOfBlock) {
+            tr.split(to);
+          }
+          if (!isStartOfBlock) {
+            tr.split(from);
+          }
+
+          const mappedFrom = tr.mapping.map(from, 1);
+          const mappedTo = tr.mapping.map(to, -1);
+          tr.setSelection(TextSelection.create(tr.doc, mappedFrom, mappedTo));
+
+          // Only headings and paragraphs reach here — both are valid textblocks
+          const nodeType = editor.schema.nodes[targetType];
+          if (nodeType) {
+            tr.setBlockType(mappedFrom, mappedTo, nodeType, targetAttrs);
+          }
+        }
+        return true;
+      })
+      .run();
+  }, [editor]);
+
   if (!editor) return null;
 
   const btn = (active: boolean) =>
@@ -221,7 +352,7 @@ export default function RichTextEditor({
         <div className="bg-zinc-50/80 border-b border-zinc-150 px-4 py-2.5 flex flex-wrap gap-2.5 items-center select-none">
           <button
             type="button"
-            onClick={() => editor.chain().focus().setParagraph().run()}
+            onClick={() => runBlockCommandWithSplit("paragraph")}
             className={btn(false)}
             title="Paragraph"
           >
@@ -240,19 +371,19 @@ export default function RichTextEditor({
 
           {divider}
 
-          <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} className={btn(editor.isActive("heading", { level: 1 }))} title="Heading 1">
+          <button type="button" onClick={() => runBlockCommandWithSplit("heading", { level: 1 })} className={btn(editor.isActive("heading", { level: 1 }))} title="Heading 1">
             <Heading1 className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} className={btn(editor.isActive("heading", { level: 2 }))} title="Heading 2">
+          <button type="button" onClick={() => runBlockCommandWithSplit("heading", { level: 2 })} className={btn(editor.isActive("heading", { level: 2 }))} title="Heading 2">
             <Heading2 className="w-4 h-4" />
           </button>
 
           {divider}
 
-          <button type="button" onClick={() => editor.chain().focus().toggleBulletList().run()} className={btn(editor.isActive("bulletList"))} title="Bullet List">
+          <button type="button" onClick={() => runBlockCommandWithSplit("bulletList")} className={btn(editor.isActive("bulletList"))} title="Bullet List">
             <List className="w-4 h-4" />
           </button>
-          <button type="button" onClick={() => editor.chain().focus().toggleOrderedList().run()} className={btn(editor.isActive("orderedList"))} title="Ordered List">
+          <button type="button" onClick={() => runBlockCommandWithSplit("orderedList")} className={btn(editor.isActive("orderedList"))} title="Ordered List">
             <ListOrdered className="w-4 h-4" />
           </button>
 
@@ -263,7 +394,7 @@ export default function RichTextEditor({
             <Link2 className="w-4 h-4" />
           </button>
 
-          <button type="button" onClick={() => editor.chain().focus().toggleBlockquote().run()} className={btn(editor.isActive("blockquote"))} title="Blockquote">
+          <button type="button" onClick={() => runBlockCommandWithSplit("blockquote")} className={btn(editor.isActive("blockquote"))} title="Blockquote">
             <Quote className="w-4 h-4" />
           </button>
 

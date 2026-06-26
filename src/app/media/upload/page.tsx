@@ -50,44 +50,6 @@ function formatSize(bytes: number) {
   return mb < 1 ? `${(mb * 1024).toFixed(0)} KB` : `${mb.toFixed(1)} MB`;
 }
 
-// Capture a JPEG thumbnail Blob from a video File at a given time offset
-function captureVideoThumbnail(file: File, seekTime = 1.5): Promise<Blob | null> {
-  return new Promise((resolve) => {
-    const video = document.createElement("video");
-    const objectUrl = URL.createObjectURL(file);
-    video.src = objectUrl;
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = "metadata";
-
-    const cleanup = () => URL.revokeObjectURL(objectUrl);
-
-    video.addEventListener("loadedmetadata", () => {
-      // Clamp seekTime to the video duration
-      video.currentTime = Math.min(seekTime, (video.duration || 2) - 0.1);
-    });
-
-    video.addEventListener("seeked", () => {
-      try {
-        const canvas = document.createElement("canvas");
-        canvas.width = video.videoWidth || 1280;
-        canvas.height = video.videoHeight || 720;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { cleanup(); resolve(null); return; }
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob((blob) => { cleanup(); resolve(blob); }, "image/jpeg", 0.85);
-      } catch {
-        cleanup();
-        resolve(null);
-      }
-    });
-
-    video.addEventListener("error", () => { cleanup(); resolve(null); });
-
-    // Start loading
-    video.load();
-  });
-}
 
 async function uploadFileWithProgress(
   file: File,
@@ -154,12 +116,6 @@ async function uploadFileWithProgress(
     formData.append("video", file);
     const titleWithoutExt = file.name.substring(0, file.name.lastIndexOf('.')) || file.name;
     formData.append("title", titleWithoutExt);
-
-    // Auto-generate thumbnail from frame 1.5s and attach it to the upload
-    const thumbnail = await captureVideoThumbnail(file, 1.5);
-    if (thumbnail) {
-      formData.append("thumbnail", thumbnail, "thumbnail.jpg");
-    }
   } else {
     formData.append("images", file);
   }

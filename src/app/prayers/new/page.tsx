@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import NavigationGuard from "@/components/NavigationGuard";
 import {
   BookOpen, Clock, Calendar, ChevronDown, Sparkles,
   Send, Folder, Image as ImageIcon, Upload, X, ArrowLeft, FileImage,
@@ -13,9 +15,11 @@ import {
   createPrayer,
   getPrayerById,
   updatePrayer,
+  publishPrayer,
   Category,
 } from "@/lib/api";
 import MediaSelectModal, { MediaFile } from "@/components/MediaSelectModal";
+import BibleVerseSelector from "@/components/BibleVerseSelector";
 
 function SkeletonPulse({ className }: { className: string }) {
   return (
@@ -70,24 +74,52 @@ function CreatePrayerForm() {
   const editId = searchParams.get("edit");
 
   const [isLoadingDetails, setIsLoadingDetails] = useState(!!editId);
+
+  // Keep track of initial loaded state to perform dirty checking
+  const initialValuesRef = useRef({
+    title: "",
+    categoryId: "",
+    verseRef: "",
+    duration: "",
+    content: "",
+    occasion: "",
+    statusOpt: "immediately" as PublishStatus,
+    featuredImageUrl: null as string | null,
+  });
+
   const [title, setTitle]           = useState("");
   const [occasion, setOccasion]     = useState("");
   const [verseRef, setVerseRef]     = useState("");
   const [duration, setDuration]     = useState("");
   const [content, setContent]       = useState("");
   const [statusOpt, setStatusOpt]   = useState<PublishStatus>("immediately");
-  const [publishDate, setPublishDate] = useState("2024-10-24");
+  const [publishDate, setPublishDate] = useState(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const date = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${date}`;
+  });
   const [publishTime, setPublishTime] = useState("09:00");
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState("");
   const [featuredImage, setFeaturedImage] = useState<MediaFile | null>(null);
 
-
-
   const [isSubmitting, setIsSubmitting]   = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [mediaModalMode, setMediaModalMode] = useState<"featured" | "editor">("featured");
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
+
+  const isDirty =
+    title !== initialValuesRef.current.title ||
+    categoryId !== initialValuesRef.current.categoryId ||
+    verseRef !== initialValuesRef.current.verseRef ||
+    duration !== initialValuesRef.current.duration ||
+    content !== initialValuesRef.current.content ||
+    occasion !== initialValuesRef.current.occasion ||
+    statusOpt !== initialValuesRef.current.statusOpt ||
+    (featuredImage?.url || null) !== (initialValuesRef.current.featuredImageUrl || null);
+
   const editorImageInsert = useRef<((url: string) => void) | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -106,6 +138,7 @@ function CreatePrayerForm() {
           setCategories(res.data);
           if (res.data.length > 0 && !editId) {
             setCategoryId(res.data[0].id);
+            initialValuesRef.current.categoryId = res.data[0].id;
           }
         }
       })
@@ -128,16 +161,19 @@ function CreatePrayerForm() {
             setDuration(prayer.duration ? `${prayer.duration} minutes` : "");
             setContent(prayer.content || "");
             
-            // Map occasion from first tag
-            if (prayer.tags && prayer.tags.length > 0) {
-              const firstTag = prayer.tags[0]?.tag?.name || "";
-              setOccasion(firstTag);
-            }
+            // Map occasion from prayerWhen with fallback to tags (flat or nested format)
+            const firstTag = prayer.tags && prayer.tags.length > 0 ? (prayer.tags[0] as any) : null;
+            const tagOccasion = firstTag ? (firstTag.tag?.name || firstTag.name || "") : "";
+            const currentOccasion = prayer.prayerWhen || tagOccasion || "";
+            setOccasion(currentOccasion);
 
+            let statusVal: PublishStatus = "immediately";
             if (prayer.status === "PUBLISHED") {
               setStatusOpt("immediately");
+              statusVal = "immediately";
             } else if (prayer.status === "SCHEDULED") {
               setStatusOpt("scheduled");
+              statusVal = "scheduled";
               if (prayer.scheduledFor) {
                 const d = new Date(prayer.scheduledFor);
                 const year = d.getFullYear();
@@ -152,6 +188,7 @@ function CreatePrayerForm() {
               }
             } else {
               setStatusOpt("draft");
+              statusVal = "draft";
             }
 
             if (prayer.featuredImage) {
@@ -163,6 +200,18 @@ function CreatePrayerForm() {
                 url: prayer.featuredImage,
               });
             }
+
+            // Set initial loaded state for navigation guard comparison
+            initialValuesRef.current = {
+              title: prayer.title || "",
+              categoryId: prayer.category?.id || "",
+              verseRef: prayer.verseReference || "",
+              duration: prayer.duration ? `${prayer.duration} minutes` : "",
+              content: prayer.content || "",
+              occasion: currentOccasion,
+              statusOpt: statusVal,
+              featuredImageUrl: prayer.featuredImage || null,
+            };
           }
         })
         .catch((err) => {
@@ -206,6 +255,50 @@ function CreatePrayerForm() {
       .replace(/^-+|-+$/g, "");
   };
 
+  const handleSaveAsDraft = async (): Promise<boolean> => {
+    try {
+      const baseSlug = slugify(title || "untitled-prayer");
+      const finalSlug = editId ? baseSlug : `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
+      const durationMinutes = Math.max(1, parseInt(duration, 10) || 1);
+      const tags = occasion.trim() ? [occasion.trim()] : [];
+
+      const payload = {
+        title: (title || "Untitled Prayer").trim(),
+        slug: finalSlug,
+        content: content.trim() || "<p>Draft prayer content</p>",
+        duration: durationMinutes,
+        verseReference: verseRef.trim() || undefined,
+        categoryId: categoryId || undefined,
+        image: featuredImage?.url || undefined,
+        tags,
+        status: "DRAFT" as const,
+      };
+
+      if (editId) {
+        const res = await updatePrayer(editId, payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      } else {
+        const res = await createPrayer(payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      }
+      addToast("error", "Failed to save draft.");
+      return false;
+    } catch (err: any) {
+      console.error("Failed to save draft:", JSON.stringify(err));
+      const validationDetails = err?.errors && Array.isArray(err.errors)
+        ? ": " + err.errors.map((e: any) => `${e.path || e.field || ""}: ${e.message || ""}`).join(", ")
+        : "";
+      addToast("error", (err?.message || "Failed to save draft") + validationDetails);
+      return false;
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -215,11 +308,14 @@ function CreatePrayerForm() {
     setIsSubmitting(true);
 
     try {
-      const finalSlug = slugify(title);
+      // On create, append a short random suffix to avoid slug unique-constraint collisions.
+      // On edit, reuse the slug derived from the current title (backend already has it).
+      const baseSlug = slugify(title);
+      const finalSlug = editId ? baseSlug : `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
       const durationMinutes = parseInt(duration, 10) || 0;
       
-      let scheduledFor: string | null = null;
       let status: "DRAFT" | "PUBLISHED" | "SCHEDULED" = "PUBLISHED";
+      let scheduledFor: string | undefined;
       
       if (statusOpt === "scheduled") {
         status = "SCHEDULED";
@@ -227,6 +323,7 @@ function CreatePrayerForm() {
       } else if (statusOpt === "draft") {
         status = "DRAFT";
       }
+      // For "immediately", status stays "PUBLISHED" and scheduledFor is omitted entirely
 
       // Map occasion to a tag if provided
       const tags = occasion.trim() ? [occasion.trim()] : [];
@@ -241,13 +338,18 @@ function CreatePrayerForm() {
         categoryId: categoryId || undefined,
         image: featuredImage?.url || undefined,
         tags,
-        scheduledFor,
+        prayerWhen: occasion.trim() || null,
+        ...(scheduledFor !== undefined ? { scheduledFor } : {}),
         status,
       };
 
       if (editId) {
         const res = await updatePrayer(editId, payload);
         if (res.success) {
+          // If publish immediately, call the publish endpoint explicitly
+          if (statusOpt === "immediately") {
+            await publishPrayer(editId).catch(() => {});
+          }
           addToast("success", `Prayer "${title.trim()}" updated successfully!`);
           setTimeout(() => {
             router.push("/prayers");
@@ -258,6 +360,10 @@ function CreatePrayerForm() {
       } else {
         const res = await createPrayer(payload);
         if (res.success) {
+          // If publish immediately, call the publish endpoint explicitly
+          if (statusOpt === "immediately") {
+            await publishPrayer(res.data.id).catch(() => {});
+          }
           addToast("success", `Prayer "${title.trim()}" created successfully!`);
           setTimeout(() => {
             router.push("/prayers");
@@ -295,16 +401,16 @@ function CreatePrayerForm() {
       {/* Header */}
       <header className="flex items-center justify-between border-b border-zinc-100 pb-4 bg-white -mx-8 px-8 -mt-8 pt-8 sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push("/prayers")} className="p-1.5 rounded-full hover:bg-zinc-50 text-zinc-500 hover:text-zinc-800 transition-all cursor-pointer">
+          <Link href="/prayers" className="p-1.5 rounded-full hover:bg-zinc-50 text-zinc-500 hover:text-zinc-800 transition-all cursor-pointer">
             <ArrowLeft className="w-5 h-5" />
-          </button>
+          </Link>
           <h1 className="text-xl font-extrabold text-[#B31046] tracking-tight">
             {editId ? "Edit Prayer" : "Create New Prayer"}
           </h1>
         </div>
-        <button onClick={() => router.push("/prayers")} className="text-sm font-extrabold text-zinc-500 hover:text-zinc-800 transition-colors cursor-pointer">
+        <Link href="/prayers" className="text-sm font-extrabold text-zinc-500 hover:text-zinc-800 transition-colors cursor-pointer">
           Cancel
-        </button>
+        </Link>
       </header>
 
       {/* ── Main Form Layout / Skeleton Loader ── */}
@@ -390,10 +496,7 @@ function CreatePrayerForm() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label className="text-xs font-bold text-zinc-700 tracking-wide block mb-2">Bible Verse Reference</label>
-                  <div className="relative">
-                    <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
-                    <input type="text" placeholder="e.g. Genesis 1:1" value={verseRef} onChange={(e) => setVerseRef(e.target.value)} className={inputSmCls} />
-                  </div>
+                  <BibleVerseSelector value={verseRef} onChange={setVerseRef} />
                 </div>
                 <div>
                   <label className="text-xs font-bold text-zinc-700 tracking-wide block mb-2">Prayer Duration (Est.)</label>
@@ -551,6 +654,12 @@ function CreatePrayerForm() {
             : "Select Featured Image"
         }
         type="image"
+      />
+
+      <NavigationGuard
+        isDirty={isDirty && !isSubmitting}
+        onSaveAsDraft={handleSaveAsDraft}
+        onDiscard={() => {}}
       />
     </div>
   );

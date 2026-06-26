@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import { STORY_CATEGORIES } from "@/lib/storyCategories";
-import { getStories, getCategories, deleteStory, Category, publishStory, unpublishStory } from "@/lib/api";
+import { getStories, getCategories, deleteStory, Category, publishStory, unpublishStory, resolveAssetUrl } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -254,7 +254,7 @@ export default function BibleStoriesPage() {
     if (selectedCategoryId !== "all") {
       params.categoryId = selectedCategoryId;
     }
-    if (selectedStatus !== "All Statuses") {
+    if (selectedStatus !== "All Statuses" && selectedStatus !== "Scheduled") {
       params.status = selectedStatus.toUpperCase(); // DRAFT, PUBLISHED
     }
     if (searchTerm.trim()) {
@@ -263,25 +263,44 @@ export default function BibleStoriesPage() {
     getStories(params)
       .then((res) => {
         if (res?.success && Array.isArray(res.data)) {
-          const mapped: Story[] = res.data.map((item) => ({
-            id: item.id,
-            title: item.title,
-            category: item.category?.name || "Uncategorized",
-            date: new Date(item.createdAt).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            }),
-            status: item.status === "PUBLISHED" ? "Published" : item.status === "SCHEDULED" ? "Scheduled" : "Draft",
-            gradient: getAvatarBg(item.title),
-            imageUrl: item.featuredImage || undefined,
-          }));
+          let dataList = res.data;
+          if (selectedStatus === "Scheduled") {
+            dataList = dataList.filter((item) => item.status === "SCHEDULED");
+          }
+          const mapped: Story[] = dataList.map((item) => {
+            let formattedDate = "N/A";
+            if (item.createdAt) {
+              try {
+                const d = new Date(item.createdAt);
+                if (!isNaN(d.getTime())) {
+                  formattedDate = d.toLocaleDateString("en-GB", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  });
+                }
+              } catch (e) {
+                console.warn("Invalid date format", item.createdAt, e);
+              }
+            }
+
+            return {
+              id: item.id,
+              title: item.title || "Untitled",
+              category: item.category?.name || "Uncategorized",
+              date: formattedDate,
+              status: item.status === "PUBLISHED" ? "Published" : item.status === "SCHEDULED" ? "Scheduled" : "Draft",
+              gradient: getAvatarBg(item.title || "Untitled"),
+              imageUrl: resolveAssetUrl(item.featuredImage),
+            };
+          });
           setStories(mapped);
         }
       })
       .catch((err) => {
         console.error("Failed to load stories", err);
-        addToast("error", "Failed to load stories from backend.");
+        const errMsg = err instanceof Error ? err.message : (typeof err === "object" && err !== null ? JSON.stringify(err) : String(err));
+        addToast("error", `Failed to load stories from backend: ${errMsg}`);
       })
       .finally(() => {
         setLoading(false);
@@ -474,13 +493,15 @@ export default function BibleStoriesPage() {
                 key={story.id}
                 className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm hover:shadow-md transition-shadow flex flex-col"
               >
-                {/* Thumbnail */}
                 <div className={`relative aspect-video bg-gradient-to-br ${story.gradient} flex items-center justify-center overflow-hidden`}>
-                  {story.imageUrl ? (
-                    <img src={story.imageUrl} alt={story.title} className="w-full h-full object-cover transition-transform hover:scale-103 duration-300" />
-                  ) : (
-                    <ImageIcon className="w-12 h-12 text-white/30" />
-                  )}
+                  <img
+                    src={story.imageUrl}
+                    alt={story.title}
+                    onError={(e) => {
+                      e.currentTarget.src = "/logogo.png";
+                    }}
+                    className="w-full h-full object-cover transition-transform hover:scale-103 duration-300"
+                  />
                   <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
                     story.status === "Published" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
                     : story.status === "Scheduled" ? "bg-blue-100/80 text-blue-800 border border-blue-200/30"
@@ -543,15 +564,15 @@ export default function BibleStoriesPage() {
             <div className="divide-y divide-zinc-50">
               {paginatedStories.map((story) => (
                 <div key={story.id} className="grid grid-cols-[56px_2fr_1.2fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5 hover:bg-zinc-50/50 transition-colors group">
-                  {/* Thumb */}
                   <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
-                    {story.imageUrl ? (
-                      <img src={story.imageUrl} alt={story.title} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className={`w-full h-full bg-gradient-to-br ${story.gradient} flex items-center justify-center`}>
-                        <ImageIcon className="w-4 h-4 text-white/60" />
-                      </div>
-                    )}
+                    <img
+                      src={story.imageUrl}
+                      alt={story.title}
+                      onError={(e) => {
+                        e.currentTarget.src = "/logogo.png";
+                      }}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   {/* Title */}
                   <p className="text-sm font-extrabold text-zinc-900 truncate">{story.title}</p>

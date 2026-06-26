@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import NavigationGuard from "@/components/NavigationGuard";
 import {
   BookOpen,
   Clock,
@@ -19,20 +21,14 @@ import {
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import RichTextEditor from "@/components/RichTextEditor";
 import { STORY_CATEGORIES } from "@/lib/storyCategories";
-import { getUploads, getCategories, createStory, getStoryById, updateStory, Category } from "@/lib/api";
+import { getUploads, getCategories, createStory, getStoryById, updateStory, publishStory, Category } from "@/lib/api";
+import BibleVerseSelector from "@/components/BibleVerseSelector";
+import MediaSelectModal, { MediaFile } from "@/components/MediaSelectModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type PublishStatus = "immediately" | "scheduled" | "draft";
 type StoryStatus = "Published" | "Scheduled" | "Draft";
-
-interface MediaFile {
-  id: string;
-  name: string;
-  gradient: string;
-  type: string;
-  url?: string;
-}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -97,21 +93,34 @@ function CreateStoryForm() {
   
   const [isLoadingDetails, setIsLoadingDetails] = useState(!!editId);
 
+  // Keep track of initial loaded state to perform dirty checking
+  const initialValuesRef = useRef({
+    title: "",
+    categoryId: "",
+    verseRef: "",
+    duration: "",
+    content: "",
+    statusOpt: "immediately" as PublishStatus,
+    featuredImageUrl: null as string | null,
+  });
+
   // State fields
   const [title, setTitle] = useState("");
   const [verseRef, setVerseRef] = useState("");
   const [duration, setDuration] = useState("");
   const [content, setContent] = useState("");
   const [statusOpt, setStatusOpt] = useState<PublishStatus>("immediately");
-  const [publishDate, setPublishDate] = useState("2024-10-24");
+  const [publishDate, setPublishDate] = useState(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const date = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${date}`;
+  });
   const [publishTime, setPublishTime] = useState("09:00");
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState<string>("");
   const [featuredImage, setFeaturedImage] = useState<MediaFile | null>(null);
-
-  // Live media library states
-  const [mediaList, setMediaList] = useState<MediaFile[]>([]);
-  const [loadingMedia, setLoadingMedia] = useState(false);
 
   // UI States
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -119,6 +128,16 @@ function CreateStoryForm() {
   // "featured" = picking story thumbnail | "editor" = inserting into rich text
   const [mediaModalMode, setMediaModalMode] = useState<"featured" | "editor">("featured");
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
+
+  const isDirty =
+    title !== initialValuesRef.current.title ||
+    categoryId !== initialValuesRef.current.categoryId ||
+    verseRef !== initialValuesRef.current.verseRef ||
+    duration !== initialValuesRef.current.duration ||
+    content !== initialValuesRef.current.content ||
+    statusOpt !== initialValuesRef.current.statusOpt ||
+    (featuredImage?.url || null) !== (initialValuesRef.current.featuredImageUrl || null);
+
   const editorImageInsert = useRef<((url: string) => void) | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
@@ -135,39 +154,15 @@ function CreateStoryForm() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Fetch live uploads (images only) & categories
+  // Fetch categories
   useEffect(() => {
-    setLoadingMedia(true);
-    getUploads({ type: "image" })
-      .then((res) => {
-        if (res?.success && res.data?.images?.images) {
-          const imgs: MediaFile[] = [];
-          res.data.images.images.forEach((img) => {
-            const info = getCloudinaryFileInfo(img.url, img.publicId);
-            imgs.push({
-              id: img.publicId,
-              name: info.name,
-              gradient: getAvatarBg(img.publicId),
-              type: info.type,
-              url: img.url,
-            });
-          });
-          setMediaList(imgs);
-        }
-      })
-      .catch((err) => {
-        console.warn("Failed to load uploads list in create story form", err);
-      })
-      .finally(() => {
-        setLoadingMedia(false);
-      });
-
     getCategories("BIBLE_STORY")
       .then((res) => {
         if (res?.success && Array.isArray(res.data)) {
           setCategories(res.data);
           if (res.data.length > 0 && !editId) {
             setCategoryId(res.data[0].id);
+            initialValuesRef.current.categoryId = res.data[0].id;
           }
         }
       })
@@ -190,10 +185,13 @@ function CreateStoryForm() {
             setDuration(story.duration ? `${story.duration} minutes` : "");
             setContent(story.content || "");
             
+            let statusVal: PublishStatus = "immediately";
             if (story.status === "PUBLISHED") {
               setStatusOpt("immediately");
+              statusVal = "immediately";
             } else if (story.status === "SCHEDULED") {
               setStatusOpt("scheduled");
+              statusVal = "scheduled";
               if (story.scheduledFor) {
                 const d = new Date(story.scheduledFor);
                 const year = d.getFullYear();
@@ -208,6 +206,7 @@ function CreateStoryForm() {
               }
             } else {
               setStatusOpt("draft");
+              statusVal = "draft";
             }
 
             if (story.featuredImage) {
@@ -219,6 +218,17 @@ function CreateStoryForm() {
                 url: story.featuredImage,
               });
             }
+
+            // Set initial loaded state for navigation guard comparison
+            initialValuesRef.current = {
+              title: story.title || "",
+              categoryId: story.category?.id || "",
+              verseRef: story.verseReference || "",
+              duration: story.duration ? `${story.duration} minutes` : "",
+              content: story.content || "",
+              statusOpt: statusVal,
+              featuredImageUrl: story.featuredImage || null,
+            };
           }
         })
         .catch((err) => {
@@ -246,16 +256,13 @@ function CreateStoryForm() {
     setIsMediaModalOpen(true);
   };
 
-  const handleMediaConfirm = () => {
-    const media = mediaList.find((m) => m.id === selectedMediaId) || MOCK_MEDIA_LIBRARY.find((m) => m.id === selectedMediaId);
-    if (!media) { setIsMediaModalOpen(false); return; }
+  const handleMediaConfirm = (media: MediaFile) => {
     if (mediaModalMode === "featured") {
       setFeaturedImage(media);
     } else if (mediaModalMode === "editor" && editorImageInsert.current && media.url) {
       editorImageInsert.current(media.url);
       editorImageInsert.current = null;
     }
-    setIsMediaModalOpen(false);
   };
 
   const slugify = (text: string) => {
@@ -265,6 +272,50 @@ function CreateStoryForm() {
       .replace(/[^\w\s-]/g, "")
       .replace(/[\s_-]+/g, "-")
       .replace(/^-+|-+$/g, "");
+  };
+
+  const handleSaveAsDraft = async (): Promise<boolean> => {
+    try {
+      const baseSlug = slugify(title || "untitled-story");
+      const finalSlug = editId ? baseSlug : `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
+      const durationMinutes = Math.max(1, parseInt(duration, 10) || 1);
+
+      const payload = {
+        title: (title || "Untitled Story").trim(),
+        slug: finalSlug,
+        content: content.trim() || "<p>Draft story content</p>",
+        duration: durationMinutes,
+        verseReference: verseRef.trim() || undefined,
+        ageGroup: "TODDLER" as const,
+        categoryId: categoryId || undefined,
+        image: featuredImage?.url || undefined,
+        tags: [],
+        status: "DRAFT" as const,
+      };
+
+      if (editId) {
+        const res = await updateStory(editId, payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      } else {
+        const res = await createStory(payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      }
+      addToast("error", "Failed to save draft.");
+      return false;
+    } catch (err: any) {
+      console.error("Failed to save draft:", JSON.stringify(err));
+      const validationDetails = err?.errors && Array.isArray(err.errors)
+        ? ": " + err.errors.map((e: any) => `${e.path || e.field || ""}: ${e.message || ""}`).join(", ")
+        : "";
+      addToast("error", (err?.message || "Failed to save draft") + validationDetails);
+      return false;
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -278,11 +329,14 @@ function CreateStoryForm() {
     setIsSubmitting(true);
 
     try {
-      const finalSlug = slugify(title);
+      // On create, append a short random suffix to avoid slug unique-constraint collisions.
+      // On edit, reuse the slug derived from the current title (backend already has it).
+      const baseSlug = slugify(title);
+      const finalSlug = editId ? baseSlug : `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
       const durationMinutes = parseInt(duration, 10) || 0;
       
-      let scheduledFor: string | null = null;
       let status: "DRAFT" | "PUBLISHED" | "SCHEDULED" = "PUBLISHED";
+      let scheduledFor: string | undefined;
       
       if (statusOpt === "scheduled") {
         status = "SCHEDULED";
@@ -290,6 +344,7 @@ function CreateStoryForm() {
       } else if (statusOpt === "draft") {
         status = "DRAFT";
       }
+      // For "immediately", status stays "PUBLISHED" and scheduledFor is omitted entirely
 
       const payload = {
         title: title.trim(),
@@ -301,13 +356,17 @@ function CreateStoryForm() {
         categoryId: categoryId || undefined,
         image: featuredImage?.url || undefined,
         tags: [],
-        scheduledFor,
+        ...(scheduledFor !== undefined ? { scheduledFor } : {}),
         status,
       };
 
       if (editId) {
         const res = await updateStory(editId, payload);
         if (res.success) {
+          // If publish immediately, call the publish endpoint explicitly
+          if (statusOpt === "immediately") {
+            await publishStory(editId).catch(() => {});
+          }
           addToast("success", `Story "${title.trim()}" updated successfully!`);
           setTimeout(() => {
             router.push("/bible-stories");
@@ -318,6 +377,10 @@ function CreateStoryForm() {
       } else {
         const res = await createStory(payload);
         if (res.success) {
+          // If publish immediately, call the publish endpoint explicitly
+          if (statusOpt === "immediately") {
+            await publishStory(res.data.id).catch(() => {});
+          }
           addToast("success", `Story "${title.trim()}" created successfully!`);
           setTimeout(() => {
             router.push("/bible-stories");
@@ -368,23 +431,23 @@ function CreateStoryForm() {
       {/* ── Header Row ── */}
       <header className="flex items-center justify-between border-b border-zinc-100 pb-4 bg-white -mx-8 px-8 -mt-8 pt-8 sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => router.push("/bible-stories")}
+          <Link
+            href="/bible-stories"
             className="p-1.5 rounded-full hover:bg-zinc-50 text-zinc-500 hover:text-zinc-800 transition-all cursor-pointer"
           >
             <ArrowLeft className="w-5 h-5" />
-          </button>
+          </Link>
           <h1 className="text-xl font-extrabold text-[#B31046] tracking-tight">
             {editId ? "Edit Bible Story" : "Create New Bible Story"}
           </h1>
         </div>
 
-        <button
-          onClick={() => router.push("/bible-stories")}
+        <Link
+          href="/bible-stories"
           className="text-sm font-extrabold text-zinc-500 hover:text-zinc-800 transition-colors select-none cursor-pointer"
         >
           Cancel
-        </button>
+        </Link>
       </header>
 
       {/* ── Main Form Layout / Skeleton Loader ── */}
@@ -481,16 +544,7 @@ function CreateStoryForm() {
                 <label className="text-xs font-bold text-zinc-700 tracking-wide block mb-2">
                   Bible Verse Reference
                 </label>
-                <div className="relative">
-                  <BookOpen className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
-                  <input
-                    type="text"
-                    placeholder="e.g. Genesis 1:1"
-                    value={verseRef}
-                    onChange={(e) => setVerseRef(e.target.value)}
-                    className="w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 hover:bg-[#FFF0F2]/45 focus:bg-white focus:border-[#B31046] focus:ring-2 focus:ring-[#B31046]/5 pl-11 pr-4 py-3.5 rounded-2xl text-sm font-semibold text-zinc-800 placeholder-zinc-400 outline-none transition-all"
-                  />
-                </div>
+                <BibleVerseSelector value={verseRef} onChange={setVerseRef} />
               </div>
 
               {/* Duration */}
@@ -763,10 +817,10 @@ function CreateStoryForm() {
                   <Upload className="w-5 h-5 text-[#B31046]" />
                 </div>
                 <div className="space-y-1">
-                  <span className="text-xs font-extrabold text-[#B31046] hover:underline block">
+                  <span className="text-xs font-extrabold text-[#B31046] block">
                     Click to select from media library
                   </span>
-                  <span className="text-[10px] font-bold text-zinc-450 block">
+                  <span className="text-[10px] font-bold text-zinc-400 block">
                     PNG, JPG (max. 5MB)
                   </span>
                 </div>
@@ -779,91 +833,25 @@ function CreateStoryForm() {
       </form>
       )}
 
-      {/* ── Custom Media Library Selector Modal ── */}
-      {isMediaModalOpen && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl p-6 w-full max-w-5xl border border-zinc-100 shadow-2xl relative space-y-5 animate-in fade-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]">
-            
-            <button
-              onClick={() => setIsMediaModalOpen(false)}
-              className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 transition-colors cursor-pointer"
-            >
-              <X className="w-4.5 h-4.5" />
-            </button>
+      {/* ── Reusable Media Library Modal ── */}
+      <MediaSelectModal
+        isOpen={isMediaModalOpen}
+        onClose={() => setIsMediaModalOpen(false)}
+        onConfirm={handleMediaConfirm}
+        selectedId={selectedMediaId}
+        title={
+          mediaModalMode === "editor"
+            ? "Insert Image"
+            : "Select Featured Image"
+        }
+        type="image"
+      />
 
-            <div className="space-y-1">
-              <h3 className="text-lg font-extrabold text-zinc-900">
-                {mediaModalMode === "editor" ? "Insert Image" : "Select Featured Image"}
-              </h3>
-              <p className="text-xs text-zinc-400">
-                {mediaModalMode === "editor"
-                  ? "Choose an image from your Media Library to insert into the story content."
-                  : "Choose an image from your Media Library to set as the story thumbnail."}
-              </p>
-            </div>
-
-            {/* Grid display of media files */}
-            {loadingMedia ? (
-              <div className="py-12 text-center text-sm font-semibold text-zinc-400">Loading library files...</div>
-            ) : mediaList.length === 0 ? (
-              <div className="py-12 text-center text-sm font-semibold text-zinc-400">No images found. Upload images in Media Library first.</div>
-            ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-x-4 gap-y-15 overflow-y-auto pr-1 py-1 no-scrollbar my-2">
-                {mediaList.map((media) => {
-                  const isSelected = selectedMediaId === media.id;
-                  return (
-                    <div
-                      key={media.id}
-                      onClick={() => setSelectedMediaId(media.id)}
-                      className={`relative aspect-[4/3] rounded-2xl bg-gradient-to-br ${media.gradient} flex items-center justify-center cursor-pointer overflow-hidden border-2 transition-all select-none
-                        ${
-                          isSelected
-                            ? "border-[#B31046] ring-4 ring-[#B31046]/10 scale-102"
-                            : "border-transparent hover:border-zinc-200"
-                        }`}
-                    >
-                      {media.url ? (
-                        <img src={media.url} alt={media.name} className="absolute inset-0 w-full h-full object-cover" />
-                      ) : null}
-                      {/* Tick box overlay when selected */}
-                      {isSelected && (
-                        <div className="absolute top-2 right-2 w-5 h-5 rounded-full bg-[#B31046] flex items-center justify-center z-10 shadow-sm">
-                          <div className="w-2 h-2 rounded-full bg-white" />
-                        </div>
-                      )}
-                      <div className="flex flex-col items-center text-center space-y-1 p-3 z-10 relative">
-                        {!media.url && <FileImage className="w-8 h-8 text-white/40" />}
-                        <span className={`text-[10px] font-extrabold truncate max-w-[120px] ${
-                          media.url ? "text-white bg-black/40 px-2 py-0.5 rounded backdrop-blur-xs" : "text-white"
-                        }`}>
-                          {media.name}
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-zinc-100 mt-2">
-              <button
-                onClick={() => setIsMediaModalOpen(false)}
-                className="px-6 py-2.5 border border-zinc-200 text-zinc-600 hover:bg-zinc-50 font-bold text-xs rounded-full transition-all active:scale-[0.98] select-none cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleMediaConfirm}
-                disabled={!selectedMediaId}
-                className="px-6 py-2.5 bg-[#B31046] hover:bg-[#960d3a] text-white font-bold text-xs rounded-full transition-all shadow-md active:scale-[0.98] select-none cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {mediaModalMode === "editor" ? "Insert Image" : "Confirm Selection"}
-              </button>
-            </div>
-
-          </div>
-        </div>
-      )}
+      <NavigationGuard
+        isDirty={isDirty && !isSubmitting}
+        onSaveAsDraft={handleSaveAsDraft}
+        onDiscard={() => {}}
+      />
 
     </div>
   );

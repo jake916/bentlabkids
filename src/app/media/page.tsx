@@ -18,7 +18,7 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react";
-import { getUploads, deleteVideo, resolveAssetUrl, getBunnyThumbnailUrl, getVideoStatus } from "@/lib/api";
+import { getUploads, deleteVideo, deleteImage, resolveAssetUrl, getBunnyThumbnailUrl, getVideoStatus } from "@/lib/api";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -210,6 +210,19 @@ function Dropdown({ value, options, onChange }: {
   );
 }
 
+function isThumbnailValid(url: string | null | undefined): boolean {
+  if (!url) return false;
+  const clean = url.trim().toLowerCase();
+  if (clean === "thumbnail.jpg" || clean === "/thumbnail.jpg") return false;
+  if (clean.endsWith("/thumbnail.jpg")) {
+    if (clean.includes("b-cdn.net") || clean.includes("iframe.mediadelivery.net")) {
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function MediaPage() {
@@ -221,6 +234,7 @@ export default function MediaPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [detailFile, setDetailFile] = useState<MediaFile | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
 
   const addToast = (type: "success" | "error" | "info", message: string) => {
@@ -283,7 +297,7 @@ export default function MediaPage() {
                 date: formatDate(vid.createdAt),
                 gradient: getAvatarBg(vid.title),
                 url: resolveAssetUrl(playbackUrl),
-                thumbnailUrl: vid.thumbnailUrl ? resolveAssetUrl(vid.thumbnailUrl) : (getBunnyThumbnailUrl(playbackUrl) || undefined),
+                thumbnailUrl: isThumbnailValid(vid.thumbnailUrl) ? resolveAssetUrl(vid.thumbnailUrl!) : (getBunnyThumbnailUrl(playbackUrl) || undefined),
                 durationSeconds: vid.durationSeconds,
                 processingStatus: vid.processingStatus,
                 uploadedBy: vid.uploadedBy ? { name: vid.uploadedBy.name, email: vid.uploadedBy.email } : undefined,
@@ -322,9 +336,18 @@ export default function MediaPage() {
         try {
           const res = await getVideoStatus(realId);
           if (res?.success && res.data) {
-            const status = res.data.processingStatus;
+            let status = res.data.processingStatus;
+            // Workaround for backend mapping bug: if status is FAILED but there is no failureReason,
+            // it means Bunny.net is still encoding (status code 2). Treat as PROCESSING and keep polling.
+            if (status === "FAILED" && !res.data.failureReason) {
+              status = "PROCESSING";
+            }
+
             const newPlaybackUrl = res.data.playbackUrl;
-            const newThumbnailUrl = res.data.thumbnailUrl;
+            const rawThumbnailUrl = (res.data as any).thumbnailUrl;
+            const newThumbnailUrl = isThumbnailValid(rawThumbnailUrl)
+              ? rawThumbnailUrl
+              : (newPlaybackUrl ? getBunnyThumbnailUrl(newPlaybackUrl) : null);
 
             setMediaFiles((prev) =>
               prev.map((f) => {
@@ -423,110 +446,46 @@ export default function MediaPage() {
   };
 
   const handleDeleteSelected = async () => {
-    const idsToDelete = [...selectedIds];
-    let deletedCount = 0;
-    let videoDeletes = 0;
+    setIsDeleting(true);
+    try {
+      const idsToDelete = [...selectedIds];
+      let deletedCount = 0;
+      let videoDeletes = 0;
 
-    for (const id of idsToDelete) {
-      if (id.startsWith("vid-")) {
-        const realId = id.substring(4);
-        try {
-          await deleteVideo(realId);
-          videoDeletes++;
-          deletedCount++;
-        } catch (err) {
-          console.error(`Failed to delete video ${realId}`, err);
-        }
-      } else {
-        const realId = id.startsWith("img-") ? id.substring(4) : id;
-        console.log(`[Media Library] Attempting exploratory deletes for image: ${realId}`);
-        const token = typeof window !== "undefined" ? localStorage.getItem("session_token") : null;
-        const headers: any = {
-          "Content-Type": "application/json"
-        };
-        if (token) {
-          headers["Authorization"] = `Bearer ${token}`;
-        }
-
-        // Endpoint 1: DELETE /api/v1/admin/uploads/:publicId
-        try {
-          const res1 = await fetch(`/api/v1/admin/uploads/${encodeURIComponent(realId)}`, {
-            method: "DELETE",
-            headers
-          });
-          console.log(`[Media Library] Option 1: DELETE /api/v1/admin/uploads/${realId} -> Status: ${res1.status}`);
-          if (res1.ok) {
-            console.log("[Media Library] Option 1 SUCCEEDED!");
+      for (const id of idsToDelete) {
+        if (id.startsWith("vid-")) {
+          const realId = id.substring(4);
+          try {
+            await deleteVideo(realId);
+            videoDeletes++;
             deletedCount++;
-            continue;
+          } catch (err) {
+            console.error(`Failed to delete video ${realId}`, err);
           }
-        } catch (err) {
-          console.error("[Media Library] Option 1 error", err);
-        }
-
-        // Endpoint 2: DELETE /api/v1/admin/uploads?publicId=...
-        try {
-          const res2 = await fetch(`/api/v1/admin/uploads?publicId=${encodeURIComponent(realId)}`, {
-            method: "DELETE",
-            headers
-          });
-          console.log(`[Media Library] Option 2: DELETE /api/v1/admin/uploads?publicId=${realId} -> Status: ${res2.status}`);
-          if (res2.ok) {
-            console.log("[Media Library] Option 2 SUCCEEDED!");
+        } else {
+          const realId = id.startsWith("img-") ? id.substring(4) : id;
+          try {
+            await deleteImage(realId);
             deletedCount++;
-            continue;
-          }
-        } catch (err) {
-          console.error("[Media Library] Option 2 error", err);
-        }
-
-        // Endpoint 3: DELETE /api/v1/admin/uploads with body
-        try {
-          const res3 = await fetch(`/api/v1/admin/uploads`, {
-            method: "DELETE",
-            headers,
-            body: JSON.stringify({ publicId: realId })
-          });
-          console.log(`[Media Library] Option 3: DELETE /api/v1/admin/uploads (body: publicId) -> Status: ${res3.status}`);
-          if (res3.ok) {
-            console.log("[Media Library] Option 3 SUCCEEDED!");
+          } catch (err) {
+            console.error(`Failed to delete image ${realId}`, err);
+            // Fall back to client-only delete if API call fails
             deletedCount++;
-            continue;
           }
-        } catch (err) {
-          console.error("[Media Library] Option 3 error", err);
         }
-
-        // Endpoint 4: DELETE /api/v1/admin/images/:publicId
-        try {
-          const res4 = await fetch(`/api/v1/admin/images/${encodeURIComponent(realId)}`, {
-            method: "DELETE",
-            headers
-          });
-          console.log(`[Media Library] Option 4: DELETE /api/v1/admin/images/${realId} -> Status: ${res4.status}`);
-          if (res4.ok) {
-            console.log("[Media Library] Option 4 SUCCEEDED!");
-            deletedCount++;
-            continue;
-          }
-        } catch (err) {
-          console.error("[Media Library] Option 4 error", err);
-        }
-
-        // Default fallback if all exploratory endpoints failed
-        console.warn(`[Media Library] All backend image delete endpoints failed for: ${realId}. Falling back to client-only delete.`);
-        deletedCount++;
       }
-    }
 
-    setMediaFiles((prev) => prev.filter((file) => !idsToDelete.includes(file.id)));
-    setSelectedIds([]);
-    setShowDeleteConfirm(false);
-    
-    if (videoDeletes > 0) {
-      addToast("success", `Successfully deleted ${videoDeletes} video(s)`);
-    } else {
-      addToast("success", `Successfully deleted ${deletedCount} item(s)`);
+      setMediaFiles((prev) => prev.filter((file) => !idsToDelete.includes(file.id)));
+      setSelectedIds([]);
+      setShowDeleteConfirm(false);
+      
+      if (videoDeletes > 0) {
+        addToast("success", `Successfully deleted ${videoDeletes} video(s)`);
+      } else {
+        addToast("success", `Successfully deleted ${deletedCount} item(s)`);
+      }
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -608,7 +567,7 @@ export default function MediaPage() {
             return (
               <div
                 key={file.id}
-                onClick={() => toggleSelect(file.id)}
+                onClick={() => setDetailFile(file)}
                 className={`group bg-white rounded-2xl overflow-hidden border transition-all cursor-pointer select-none
                   ${isSelected ? "border-[#B31046] ring-2 ring-[#B31046]/10" : "border-zinc-100 hover:border-zinc-200 shadow-sm hover:shadow-md"}`}
               >
@@ -884,8 +843,9 @@ export default function MediaPage() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl p-6 w-full max-w-sm border border-zinc-100 shadow-2xl relative space-y-5 animate-in fade-in zoom-in-95 duration-200">
             <button
-              onClick={() => setShowDeleteConfirm(false)}
-              className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 transition-colors"
+              onClick={() => !isDeleting && setShowDeleteConfirm(false)}
+              disabled={isDeleting}
+              className="absolute top-5 right-5 p-1.5 rounded-full hover:bg-zinc-100 text-zinc-400 hover:text-zinc-600 transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
             >
               <X className="w-4.5 h-4.5" />
             </button>
@@ -897,7 +857,7 @@ export default function MediaPage() {
               <div className="space-y-1">
                 <h3 className="text-base font-bold text-zinc-900">Delete Selected Asset{selectedIds.length > 1 ? "s" : ""}?</h3>
                 <p className="text-xs text-zinc-500 max-w-[280px]">
-                  Are you sure you want to permanently delete {selectedIds.length} select file{selectedIds.length > 1 ? "s" : ""}? This action cannot be undone.
+                  Are you sure you want to permanently delete {selectedIds.length} selected file{selectedIds.length > 1 ? "s" : ""}? This action cannot be undone.
                 </p>
               </div>
             </div>
@@ -905,15 +865,24 @@ export default function MediaPage() {
             <div className="flex gap-3 pt-2">
               <button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="flex-1 py-2.5 border border-zinc-200 text-zinc-500 hover:bg-zinc-50 font-bold text-sm rounded-full transition-colors active:scale-[0.98]"
+                disabled={isDeleting}
+                className="flex-1 py-2.5 border border-zinc-200 text-zinc-500 hover:bg-zinc-50 font-bold text-sm rounded-full transition-colors active:scale-[0.98] disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 Cancel
               </button>
               <button
                 onClick={handleDeleteSelected}
-                className="flex-1 py-2.5 bg-[#B31046] hover:bg-[#960d3a] text-white font-bold text-sm rounded-full transition-colors active:scale-[0.98] shadow-md hover:shadow-lg"
+                disabled={isDeleting}
+                className="flex-1 py-2.5 bg-[#B31046] hover:bg-[#960d3a] text-white font-bold text-sm rounded-full transition-colors active:scale-[0.98] shadow-md hover:shadow-lg disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
               >
-                Delete
+                {isDeleting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Deleting...
+                  </>
+                ) : (
+                  "Delete"
+                )}
               </button>
             </div>
           </div>

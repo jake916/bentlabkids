@@ -28,6 +28,7 @@ import {
   PrayerResponse,
   publishPrayer,
   unpublishPrayer,
+  resolveAssetUrl,
 } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -89,7 +90,7 @@ function mapApiPrayerToPrayer(api: PrayerResponse): Prayer {
     category: api.category?.name || "Uncategorized",
     date: formattedDate,
     status,
-    imageUrl: api.featuredImage || undefined,
+    imageUrl: resolveAssetUrl(api.featuredImage),
     gradient: getAvatarBg(api.title),
   };
 }
@@ -267,7 +268,7 @@ export default function PrayersPage() {
         params.categoryId = cat.id;
       }
     }
-    if (filterStatus !== "All Statuses") {
+    if (filterStatus !== "All Statuses" && filterStatus !== "Scheduled") {
       params.status = filterStatus.toUpperCase(); // DRAFT, PUBLISHED
     }
     if (search.trim()) {
@@ -276,7 +277,11 @@ export default function PrayersPage() {
     getPrayers(params)
       .then((res) => {
         if (res?.success && Array.isArray(res.data)) {
-          setPrayers(res.data.map(mapApiPrayerToPrayer));
+          let dataList = res.data;
+          if (filterStatus === "Scheduled") {
+            dataList = dataList.filter((item) => item.status === "SCHEDULED");
+          }
+          setPrayers(dataList.map(mapApiPrayerToPrayer));
         }
       })
       .catch((err) => {
@@ -429,13 +434,14 @@ export default function PrayersPage() {
                 <div key={prayer.id} className="grid grid-cols-[56px_2fr_1.2fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5 hover:bg-zinc-50/50 transition-colors group">
                   {/* Thumbnail */}
                   <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-gradient-to-br from-zinc-100 to-zinc-200">
-                    {prayer.imageUrl ? (
-                      <img src={prayer.imageUrl} alt={prayer.title} className="w-full h-full object-cover" />
-                    ) : (
-                      <div className={`w-full h-full bg-gradient-to-br ${prayer.gradient} flex items-center justify-center`}>
-                        <ImageIcon className="w-4 h-4 text-white/60" />
-                      </div>
-                    )}
+                    <img
+                      src={prayer.imageUrl}
+                      alt={prayer.title}
+                      onError={(e) => {
+                        e.currentTarget.src = "/logogo.png";
+                      }}
+                      className="w-full h-full object-cover"
+                    />
                   </div>
                   {/* Title + excerpt */}
                   <div className="min-w-0">
@@ -486,13 +492,15 @@ export default function PrayersPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {paginated.map((prayer) => (
               <div key={prayer.id} className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                {/* Thumbnail */}
                 <div className={`relative aspect-video bg-gradient-to-br ${prayer.gradient} flex items-center justify-center overflow-hidden`}>
-                  {prayer.imageUrl ? (
-                    <img src={prayer.imageUrl} alt={prayer.title} className="w-full h-full object-cover transition-transform hover:scale-103 duration-300" />
-                  ) : (
-                    <ImageIcon className="w-12 h-12 text-white/30" />
-                  )}
+                  <img
+                    src={prayer.imageUrl}
+                    alt={prayer.title}
+                    onError={(e) => {
+                      e.currentTarget.src = "/logogo.png";
+                    }}
+                    className="w-full h-full object-cover transition-transform hover:scale-103 duration-300"
+                  />
                   <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
                     prayer.status === "Published" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
                     : prayer.status === "Scheduled" ? "bg-blue-50/90 text-blue-600 border border-blue-100/50"

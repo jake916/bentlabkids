@@ -2,7 +2,7 @@ const fs = require('fs');
 
 async function main() {
   try {
-    const res = await fetch('https://bentlabkids-api.onrender.com/api-docs/swagger-ui-init.js');
+    const res = await fetch('https://bentlabkids-api-bxzh.onrender.com/api-docs/swagger-ui-init.js');
     if (res.ok) {
       const js = await res.text();
       fs.writeFileSync('scratch/swagger-ui-init.js', js);

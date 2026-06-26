@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect, Suspense, useRef, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Link from "next/link";
+import NavigationGuard from "@/components/NavigationGuard";
 import {
   Video, Clock, Calendar, ChevronDown, Sparkles,
   Send, Folder, Image as ImageIcon, Upload, X, ArrowLeft, FileImage, Link as LinkIcon,
@@ -9,14 +11,27 @@ import {
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import RichTextEditor from "@/components/RichTextEditor";
-import { VIDEO_CATEGORIES } from "@/lib/videoCategories";
-import { resolveAssetUrl } from "@/lib/api";
+import {
+  getCategories,
+  createVideoContent,
+  getVideoContentById,
+  updateVideoContent,
+  resolveAssetUrl,
+  CategoryApiData,
+  publishVideoContent,
+  unpublishVideoContent,
+} from "@/lib/api";
 import MediaSelectModal, { MediaFile } from "@/components/MediaSelectModal";
+import BibleVerseSelector from "@/components/BibleVerseSelector";
 
 type PublishStatus = "immediately" | "scheduled" | "draft";
 
 interface VideoMediaFile {
-  id: string; name: string; url: string; duration: string; size: string;
+  id: string;
+  name: string;
+  url: string;
+  duration: string;
+  size: string;
 }
 
 function getAvatarBg(title: string) {
@@ -44,27 +59,6 @@ const getMockVideoSize = (durationSeconds: number | null) => {
   return `${mb}MB`;
 };
 
-const MOCK_MEDIA: MediaFile[] = [
-  { id: "m1", name: "david_goliath.jpg",    gradient: "from-blue-500 via-teal-500 to-indigo-600",     type: "JPG", url: "https://images.unsplash.com/photo-1548625361-155deee223de?q=80&w=350&auto=format&fit=crop" },
-  { id: "m2", name: "jesus_loves_me.jpg",   gradient: "from-pink-500 via-rose-500 to-amber-500",      type: "JPG", url: "https://images.unsplash.com/photo-1512470876302-972faa2aa9a4?q=80&w=350&auto=format&fit=crop" },
-  { id: "m3", name: "psalm_23.jpg",         gradient: "from-sky-300 via-indigo-400 to-purple-500",    type: "JPG", url: "https://images.unsplash.com/photo-1469474968028-56623f02e42e?q=80&w=350&auto=format&fit=crop" },
-  { id: "m4", name: "puppet_show.jpg",      gradient: "from-purple-400 via-indigo-500 to-blue-600",   type: "JPG", url: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?q=80&w=350&auto=format&fit=crop" },
-];
-
-const MOCK_VIDEOS_MEDIA: VideoMediaFile[] = [
-  { id: "v1", name: "david_goliath_animated.mp4", url: "https://www.w3schools.com/html/mov_bbb.mp4", duration: "0:10", size: "3.2 MB" },
-  { id: "v2", name: "jesus_loves_me_song.mp4",    url: "https://www.w3schools.com/html/movie.mp4",   duration: "0:12", size: "2.8 MB" },
-];
-
-const MOCK_VIDEOS = [
-  { id: "1", title: "David and Goliath (Animated)",   category: "Animated Stories", status: "Published", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", duration: "5:10", description: "Watch how a young shepherd boy defeats a giant with just a sling." },
-  { id: "2", title: "Jesus Loves Me (Sing-Along)",   category: "Sing-Along Songs", status: "Published", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", duration: "2:30", description: "A fun and uplifting version of the classic Sunday school hymn." },
-  { id: "3", title: "Psalm 23 Memory Verse",         category: "Memory Verses",    status: "Published", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", duration: "1:45", description: "Learn 'The Lord is my shepherd' using interactive typography." },
-  { id: "4", title: "The Lost Sheep Puppet Play",     category: "Puppet Shows",     status: "Published", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", duration: "8:15", description: "Barnaby the Puppet goes on a search to find the one sheep." },
-  { id: "5", title: "Noah's Ark & Scientific Facts", category: "Science & Bible",  status: "Draft",     videoUrl: "",                                            duration: "6:40", description: "How big was the ark? Explore the science behind the dimensions." },
-  { id: "6", title: "Goodnight Little Lamb",          category: "Bedtime Stories",  status: "Scheduled", videoUrl: "https://www.youtube.com/watch?v=dQw4w9WgXcQ", duration: "15:20", description: "A soothing bedtime narrative designed to help toddlers wind down." },
-];
-
 // ─── Skeleton Screen Helpers ──────────────────────────────────────────────────
 
 function SkeletonPulse({ className }: { className: string }) {
@@ -85,26 +79,61 @@ function CreateVideoForm() {
   const searchParams = useSearchParams();
   const editId = searchParams.get("edit");
 
+  const [isLoadingDetails, setIsLoadingDetails] = useState(!!editId);
+
+  // Keep track of initial loaded state to perform dirty checking
+  const initialValuesRef = useRef({
+    title: "",
+    duration: "",
+    verseRef: "",
+    ageGroup: "PRESCHOOL",
+    description: "",
+    categoryId: "",
+    tags: "",
+    statusOpt: "immediately" as PublishStatus,
+    featuredImageUrl: null as string | null,
+    attachedVideoId: null as string | null,
+  });
+
   const [title, setTitle]                 = useState("");
-  const [videoUrl, setVideoUrl]           = useState("");
   const [duration, setDuration]           = useState("");
+  const [verseRef, setVerseRef]           = useState("");
+  const [ageGroup, setAgeGroup]           = useState<string>("PRESCHOOL");
   const [description, setDescription]     = useState("");
   const [statusOpt, setStatusOpt]         = useState<PublishStatus>("immediately");
-  const [publishDate, setPublishDate]     = useState("2024-10-24");
+  const [publishDate, setPublishDate]     = useState(() => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const date = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${date}`;
+  });
   const [publishTime, setPublishTime]     = useState("09:00");
-  const [category, setCategory]           = useState<string>(VIDEO_CATEGORIES[1]);
+  const [categories, setCategories]       = useState<CategoryApiData[]>([]);
+  const [categoryId, setCategoryId]       = useState("");
   const [featuredImage, setFeaturedImage] = useState<MediaFile | null>(null);
   const [attachedVideo, setAttachedVideo] = useState<VideoMediaFile | null>(null);
+  const [tags, setTags]                   = useState<string>("");
 
   const [isSubmitting, setIsSubmitting]   = useState(false);
-  const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isMediaModalOpen, setIsMediaModalOpen] = useState(false);
   const [mediaModalMode, setMediaModalMode] = useState<"featured" | "editor" | "video">("featured");
   const [selectedMediaId, setSelectedMediaId] = useState<string | null>(null);
+
+  const isDirty =
+    title !== initialValuesRef.current.title ||
+    duration !== initialValuesRef.current.duration ||
+    verseRef !== initialValuesRef.current.verseRef ||
+    ageGroup !== initialValuesRef.current.ageGroup ||
+    description !== initialValuesRef.current.description ||
+    categoryId !== initialValuesRef.current.categoryId ||
+    tags !== initialValuesRef.current.tags ||
+    statusOpt !== initialValuesRef.current.statusOpt ||
+    (featuredImage?.url || null) !== (initialValuesRef.current.featuredImageUrl || null) ||
+    (attachedVideo?.id || null) !== (initialValuesRef.current.attachedVideoId || null);
   const editorImageInsert = useRef<((url: string) => void) | null>(null);
   const [toasts, setToasts] = useState<ToastItem[]>([]);
-
-
+  const originalStatus = useRef<string | null>(null);
 
   const addToast = (type: "success" | "error" | "info", msg: string) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -113,30 +142,124 @@ function CreateVideoForm() {
   };
   const removeToast = (id: string) => setToasts((p) => p.filter((t) => t.id !== id));
 
+  // Fetch categories dynamically
   useEffect(() => {
-    if (!editId) return;
-    setIsLoadingDetails(true);
-    const timer = setTimeout(() => {
-      const found = MOCK_VIDEOS.find((v) => v.id === editId);
-      if (found) {
-        setTitle(found.title);
-        setCategory(found.category);
-        setVideoUrl(found.videoUrl);
-        setDuration(found.duration);
-        setDescription(found.description);
-        if (found.status === "Published") setStatusOpt("immediately");
-        else if (found.status === "Scheduled") setStatusOpt("scheduled");
-        else setStatusOpt("draft");
-        const img = MOCK_MEDIA.find((m) => m.id === `m${found.id}`) || null;
-        setFeaturedImage(img);
+    getCategories("VIDEO")
+      .then((res) => {
+        if (res?.success && Array.isArray(res.data)) {
+          setCategories(res.data);
+          if (res.data.length > 0 && !editId) {
+            setCategoryId(res.data[0].id);
+            initialValuesRef.current.categoryId = res.data[0].id;
+          }
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to load categories in create video form", err);
+      });
+  }, [editId]);
 
-        // Auto-attach a mock video matching the ID
-        const videoFile = MOCK_VIDEOS_MEDIA.find((vm) => vm.id === `v${found.id}`) || MOCK_VIDEOS_MEDIA[0];
-        setAttachedVideo(videoFile);
-      }
-      setIsLoadingDetails(false);
-    }, 500);
-    return () => clearTimeout(timer);
+  // Load editing details if editId is provided
+  useEffect(() => {
+    if (editId) {
+      setIsLoadingDetails(true);
+      getVideoContentById(editId)
+        .then((res) => {
+          if (res.success && res.data) {
+            const videoContent = res.data;
+            originalStatus.current = videoContent.status;
+            setTitle(videoContent.title);
+            setDescription(videoContent.content || "");
+            
+            let formattedDuration = "";
+            if (videoContent.duration) {
+              const dSec = videoContent.duration;
+              const m = Math.floor(dSec / 60);
+              const s = String(dSec % 60).padStart(2, "0");
+              formattedDuration = `${m}:${s}`;
+              setDuration(formattedDuration);
+            } else {
+              setDuration("");
+            }
+            setVerseRef(videoContent.verseReference || "");
+            setAgeGroup(videoContent.ageGroup || "PRESCHOOL");
+            setCategoryId(videoContent.category?.id || "");
+            
+            const formattedTags = videoContent.tags ? videoContent.tags.map((t) => t.tag.name).join(", ") : "";
+            setTags(formattedTags);
+
+            let statusVal: PublishStatus = "immediately";
+            if (videoContent.status === "PUBLISHED") {
+              setStatusOpt("immediately");
+              statusVal = "immediately";
+            } else if (videoContent.status === "SCHEDULED") {
+              setStatusOpt("scheduled");
+              statusVal = "scheduled";
+              if (videoContent.scheduledFor) {
+                const d = new Date(videoContent.scheduledFor);
+                const year = d.getFullYear();
+                const month = String(d.getMonth() + 1).padStart(2, "0");
+                const date = String(d.getDate()).padStart(2, "0");
+                const dateStr = `${year}-${month}-${date}`;
+                const hours = String(d.getHours()).padStart(2, "0");
+                const minutes = String(d.getMinutes()).padStart(2, "0");
+                const timeStr = `${hours}:${minutes}`;
+                setPublishDate(dateStr);
+                setPublishTime(timeStr);
+              }
+            } else {
+              setStatusOpt("draft");
+              statusVal = "draft";
+            }
+
+            if (videoContent.featuredImage) {
+              setFeaturedImage({
+                id: videoContent.featuredImage,
+                name: videoContent.featuredImage.split("/").pop() || "thumbnail",
+                url: videoContent.featuredImage,
+                gradient: getAvatarBg(videoContent.title),
+                type: "JPG",
+              });
+            }
+
+            let attachedId: string | null = null;
+            if (videoContent.videoAsset) {
+              const asset = videoContent.videoAsset;
+              attachedId = asset.id;
+              setAttachedVideo({
+                id: asset.id,
+                name: asset.title,
+                url: resolveAssetUrl(asset.playbackUrl || ""),
+                duration: asset.durationSeconds
+                  ? `${Math.floor(asset.durationSeconds / 60)}:${String(asset.durationSeconds % 60).padStart(2, "0")}`
+                  : "0:00",
+                size: getMockVideoSize(asset.durationSeconds),
+              });
+            }
+
+            // Populate initial values for navigation guard comparison
+            initialValuesRef.current = {
+              title: videoContent.title || "",
+              duration: formattedDuration,
+              verseRef: videoContent.verseReference || "",
+              ageGroup: videoContent.ageGroup || "PRESCHOOL",
+              description: videoContent.content || "",
+              categoryId: videoContent.category?.id || "",
+              tags: formattedTags,
+              statusOpt: statusVal,
+              featuredImageUrl: videoContent.featuredImage || null,
+              attachedVideoId: attachedId,
+            };
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to load video details for editing", err);
+          addToast("error", "Failed to load video details.");
+        })
+        .finally(() => {
+          setIsLoadingDetails(false);
+        });
+    }
   }, [editId]);
 
   const handleEditorImageRequest = useCallback((insert: (url: string) => void) => {
@@ -179,17 +302,192 @@ function CreateVideoForm() {
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const slugify = (text: string) => {
+    return text
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, "")
+      .replace(/[\s_-]+/g, "-")
+      .replace(/^-+|-+$/g, "");
+  };
+
+  const handleSaveAsDraft = async (): Promise<boolean> => {
+    try {
+      const baseSlug = slugify(title || "untitled-video");
+      const finalSlug = editId ? baseSlug : `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
+      
+      let parsedDuration = 0;
+      const cleanDuration = duration.trim();
+      if (cleanDuration.includes(":")) {
+        const parts = cleanDuration.split(":");
+        if (parts.length === 3) {
+          const h = parseInt(parts[0], 10) || 0;
+          const m = parseInt(parts[1], 10) || 0;
+          const s = parseInt(parts[2], 10) || 0;
+          parsedDuration = h * 3600 + m * 60 + s;
+        } else if (parts.length === 2) {
+          const m = parseInt(parts[0], 10) || 0;
+          const s = parseInt(parts[1], 10) || 0;
+          parsedDuration = m * 60 + s;
+        }
+      } else {
+        const secs = parseInt(cleanDuration, 10);
+        parsedDuration = isNaN(secs) ? 0 : secs;
+      }
+
+      const tagList = tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
+      const payload = {
+        title: (title || "Untitled Video").trim(),
+        slug: finalSlug,
+        content: description.trim() || "Draft video description",
+        duration: Math.max(1, parsedDuration || 1),
+        verseReference: verseRef.trim() || undefined,
+        ageGroup: ageGroup || undefined,
+        categoryId: categoryId || undefined,
+        image: featuredImage?.url || undefined,
+        videoAssetId: attachedVideo?.id || undefined,
+        tags: tagList,
+        status: "DRAFT" as const,
+      };
+
+      if (editId) {
+        const res = await updateVideoContent(editId, payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      } else {
+        const res = await createVideoContent(payload);
+        if (res.success) {
+          addToast("success", "Saved draft successfully!");
+          return true;
+        }
+      }
+      addToast("error", "Failed to save draft.");
+      return false;
+    } catch (err: any) {
+      console.error("Failed to save draft:", JSON.stringify(err));
+      const validationDetails = err?.errors && Array.isArray(err.errors)
+        ? ": " + err.errors.map((e: any) => `${e.path || e.field || ""}: ${e.message || ""}`).join(", ")
+        : "";
+      addToast("error", (err?.message || "Failed to save draft") + validationDetails);
+      return false;
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) { addToast("error", "Video title is required."); return; }
     if (!attachedVideo) { addToast("error", "Please attach a video file."); return; }
     setIsSubmitting(true);
-    setTimeout(() => {
+
+    try {
+      const baseSlug = slugify(title);
+      const finalSlug = editId ? baseSlug : `${baseSlug}-${Math.random().toString(36).substring(2, 7)}`;
+      
+      let parsedDuration = 0;
+      const cleanDuration = duration.trim();
+      if (cleanDuration.includes(":")) {
+        const parts = cleanDuration.split(":");
+        if (parts.length === 3) {
+          const h = parseInt(parts[0], 10) || 0;
+          const m = parseInt(parts[1], 10) || 0;
+          const s = parseInt(parts[2], 10) || 0;
+          parsedDuration = h * 3600 + m * 60 + s;
+        } else if (parts.length === 2) {
+          const m = parseInt(parts[0], 10) || 0;
+          const s = parseInt(parts[1], 10) || 0;
+          parsedDuration = m * 60 + s;
+        }
+      } else {
+        const secs = parseInt(cleanDuration, 10);
+        parsedDuration = isNaN(secs) ? 0 : secs;
+      }
+
+      let status: "DRAFT" | "PUBLISHED" | "SCHEDULED" = "PUBLISHED";
+      let scheduledFor: string | undefined;
+
+      if (statusOpt === "scheduled") {
+        status = "SCHEDULED";
+        scheduledFor = new Date(`${publishDate}T${publishTime}`).toISOString();
+      } else if (statusOpt === "draft") {
+        status = "DRAFT";
+      }
+
+      const tagList = tags
+        .split(",")
+        .map((t) => t.trim())
+        .filter((t) => t.length > 0);
+
+      const payload = {
+        title: title.trim(),
+        slug: finalSlug,
+        content: description,
+        duration: parsedDuration,
+        verseReference: verseRef.trim() || undefined,
+        ageGroup: ageGroup || undefined,
+        categoryId: categoryId || undefined,
+        image: featuredImage?.url || undefined,
+        videoAssetId: attachedVideo.id,
+        tags: tagList,
+        ...(scheduledFor !== undefined ? { scheduledFor } : {}),
+        status,
+      };
+
+      if (editId) {
+        const res = await updateVideoContent(editId, payload);
+        if (res.success) {
+          if (statusOpt === "immediately" && originalStatus.current !== "PUBLISHED") {
+            await publishVideoContent(editId).catch((err) => {
+              console.error("Failed to publish video. Message:", err?.message, "Status:", err?.status, "Errors:", err?.errors);
+            });
+          }
+          addToast("success", `Video "${title.trim()}" updated successfully!`);
+          setTimeout(() => {
+            router.push("/videos");
+          }, 1200);
+        } else {
+          addToast("error", "Failed to update video.");
+        }
+      } else {
+        const res = await createVideoContent(payload);
+        if (res.success) {
+          if (statusOpt === "immediately") {
+            await publishVideoContent(res.data.id).catch((err) => {
+              console.error("Failed to publish video:", err);
+            });
+          }
+          addToast("success", `Video "${title.trim()}" created successfully!`);
+          setTimeout(() => {
+            router.push("/videos");
+          }, 1200);
+        } else {
+          addToast("error", "Failed to create video.");
+        }
+      }
+    } catch (err: any) {
+      console.error("Failed to submit video. message:", err?.message, "status:", err?.status, "errors:", err?.errors);
+      let msg = err?.message || "An unexpected error occurred.";
+      if (err?.errors) {
+        if (Array.isArray(err.errors)) {
+          const details = err.errors.map((e: any) => `${e.field}: ${e.message}`).join(", ");
+          msg = `${msg} (${details})`;
+        } else if (typeof err.errors === "string") {
+          msg = `${msg} (${err.errors})`;
+        } else if (typeof err.errors === "object") {
+          msg = `${msg} (${JSON.stringify(err.errors)})`;
+        }
+      }
+      addToast("error", msg);
+    } finally {
       setIsSubmitting(false);
-      addToast("success", editId ? `Video "${title}" updated!` : `Video "${title}" published!`);
-      setTimeout(() => router.push("/videos"), 1200);
-    }, 1000);
+    }
   };
+
 
   const inputCls = "w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 hover:bg-[#FFF0F2]/45 focus:bg-white focus:border-[#B31046] focus:ring-2 focus:ring-[#B31046]/5 px-5 py-4 rounded-2xl text-sm font-semibold text-zinc-900 placeholder-zinc-400 outline-none transition-all";
   const inputSmCls = "w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 hover:bg-[#FFF0F2]/45 focus:bg-white focus:border-[#B31046] focus:ring-2 focus:ring-[#B31046]/5 pl-11 pr-4 py-3.5 rounded-2xl text-sm font-semibold text-zinc-800 placeholder-zinc-400 outline-none transition-all";
@@ -201,16 +499,16 @@ function CreateVideoForm() {
       {/* Header */}
       <header className="flex items-center justify-between border-b border-zinc-100 pb-4 bg-white -mx-8 px-8 -mt-8 pt-8 sticky top-0 z-30">
         <div className="flex items-center gap-3">
-          <button onClick={() => router.push("/videos")} className="p-1.5 rounded-full hover:bg-zinc-50 text-zinc-500 hover:text-zinc-800 transition-all cursor-pointer">
+          <Link href="/videos" className="p-1.5 rounded-full hover:bg-zinc-50 text-zinc-500 hover:text-zinc-800 transition-all cursor-pointer">
             <ArrowLeft className="w-5 h-5" />
-          </button>
+          </Link>
           <h1 className="text-xl font-extrabold text-[#B31046] tracking-tight">
             {editId ? "Edit Video" : "Upload New Video"}
           </h1>
         </div>
-        <button onClick={() => router.push("/videos")} className="text-sm font-extrabold text-zinc-500 hover:text-zinc-800 transition-colors cursor-pointer">
+        <Link href="/videos" className="text-sm font-extrabold text-zinc-500 hover:text-zinc-800 transition-colors cursor-pointer">
           Cancel
-        </button>
+        </Link>
       </header>
 
       {isLoadingDetails ? (
@@ -285,13 +583,22 @@ function CreateVideoForm() {
 
             {attachedVideo ? (
               <div className="space-y-4">
-                {/* Premium Video Player */}
+                {/* Premium Video Player — iframe for Bunny CDN, native <video> for direct MP4 */}
                 <div className="relative rounded-2xl overflow-hidden border border-zinc-200 bg-zinc-950 aspect-video flex items-center justify-center shadow-inner group/player">
-                  <video
-                    src={attachedVideo.url || undefined}
-                    controls
-                    className="w-full h-full object-contain"
-                  />
+                  {attachedVideo.url.includes("iframe.mediadelivery.net") ? (
+                    <iframe
+                      src={attachedVideo.url}
+                      allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
+                      allowFullScreen
+                      className="w-full h-full border-0"
+                    />
+                  ) : (
+                    <video
+                      src={attachedVideo.url || undefined}
+                      controls
+                      className="w-full h-full object-contain"
+                    />
+                  )}
                 </div>
 
                 {/* File details + action buttons */}
@@ -350,23 +657,23 @@ function CreateVideoForm() {
               <input type="text" placeholder="Enter an exciting video title" value={title} onChange={(e) => setTitle(e.target.value)} className={inputCls} />
             </div>
 
-            {/* Video Link & Duration */}
+            {/* Bible Verse Reference & Duration */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div>
-                <label className="text-xs font-bold text-zinc-700 tracking-wide block mb-2">Alternative Streaming Link (e.g. YouTube)</label>
-                <div className="relative">
-                  <LinkIcon className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
-                  <input type="text" placeholder="e.g. https://www.youtube.com/watch?v=..." value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className={inputSmCls} />
-                </div>
+                <label className="text-xs font-bold text-zinc-700 tracking-wide block mb-2">Bible Verse Reference</label>
+                <BibleVerseSelector value={verseRef} onChange={setVerseRef} />
               </div>
               <div>
                 <label className="text-xs font-bold text-zinc-700 tracking-wide block mb-2">Duration</label>
                 <div className="relative">
                   <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
-                  <input type="text" placeholder="e.g. 5:30" value={duration} onChange={(e) => setDuration(e.target.value)} className={inputSmCls} />
+                  <input type="text" placeholder="e.g. 2:30 or 150" value={duration} onChange={(e) => setDuration(e.target.value)} className={inputSmCls} />
                 </div>
+                <p className="text-[10px] text-zinc-400 font-semibold mt-1.5">Enter format MM:SS (e.g., 2:30) or total seconds (e.g., 150).</p>
               </div>
             </div>
+
+
 
             {/* Video Description */}
             <div className="space-y-2">
@@ -399,36 +706,34 @@ function CreateVideoForm() {
               {editId ? "Update" : "Publishing"}
             </h3>
 
-            {!editId && (
-              <div className="space-y-4">
-                {(["immediately", "scheduled", "draft"] as PublishStatus[]).map((opt) => (
-                  <label key={opt} className="flex items-start gap-3 cursor-pointer group">
-                    <input type="radio" name="status-opt" checked={statusOpt === opt} onChange={() => setStatusOpt(opt)} className="sr-only" />
-                    <div className="pt-0.5">
-                      <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${statusOpt === opt ? "border-[#B31046] ring-4 ring-[#B31046]/10" : "border-zinc-300 group-hover:border-zinc-400"}`}>
-                        {statusOpt === opt && <div className="w-2 h-2 rounded-full bg-[#B31046]" />}
-                      </div>
-                    </div>
-                    <div className="text-xs font-extrabold text-zinc-700 select-none capitalize">
-                      {opt === "immediately" ? "Publish immediately" : opt === "scheduled" ? "Schedule for later" : "Save as draft"}
-                    </div>
-                  </label>
-                ))}
-
-                {statusOpt === "scheduled" && (
-                  <div className="pl-7 space-y-3 pt-1">
-                    <div className="relative">
-                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
-                      <input type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} className="w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 focus:bg-white focus:border-[#B31046] pl-11 pr-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-800 outline-none transition-all cursor-pointer" />
-                    </div>
-                    <div className="relative">
-                      <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
-                      <input type="time" value={publishTime} onChange={(e) => setPublishTime(e.target.value)} className="w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 focus:bg-white focus:border-[#B31046] pl-11 pr-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-800 outline-none transition-all cursor-pointer" />
+            <div className="space-y-4">
+              {(["immediately", "scheduled", "draft"] as PublishStatus[]).map((opt) => (
+                <label key={opt} className="flex items-start gap-3 cursor-pointer group">
+                  <input type="radio" name="status-opt" checked={statusOpt === opt} onChange={() => setStatusOpt(opt)} className="sr-only" />
+                  <div className="pt-0.5">
+                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center transition-all ${statusOpt === opt ? "border-[#B31046] ring-4 ring-[#B31046]/10" : "border-zinc-300 group-hover:border-zinc-400"}`}>
+                      {statusOpt === opt && <div className="w-2 h-2 rounded-full bg-[#B31046]" />}
                     </div>
                   </div>
-                )}
-              </div>
-            )}
+                  <div className="text-xs font-extrabold text-zinc-700 select-none capitalize">
+                    {opt === "immediately" ? "Publish immediately" : opt === "scheduled" ? "Schedule for later" : "Save as draft"}
+                  </div>
+                </label>
+              ))}
+
+              {statusOpt === "scheduled" && (
+                <div className="pl-7 space-y-3 pt-1">
+                  <div className="relative">
+                    <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
+                    <input type="date" value={publishDate} onChange={(e) => setPublishDate(e.target.value)} className="w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 focus:bg-white focus:border-[#B31046] pl-11 pr-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-800 outline-none transition-all cursor-pointer" />
+                  </div>
+                  <div className="relative">
+                    <Clock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#B31046]" />
+                    <input type="time" value={publishTime} onChange={(e) => setPublishTime(e.target.value)} className="w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 focus:bg-white focus:border-[#B31046] pl-11 pr-4 py-2.5 rounded-xl text-xs font-semibold text-zinc-800 outline-none transition-all cursor-pointer" />
+                  </div>
+                </div>
+              )}
+            </div>
 
             <button type="submit" disabled={isSubmitting} className="w-full py-3.5 bg-[#B31046] hover:bg-[#960d3a] text-white font-extrabold text-sm rounded-full shadow-md active:scale-[0.98] transition-all flex items-center justify-center cursor-pointer disabled:opacity-50">
               {isSubmitting ? (
@@ -444,8 +749,12 @@ function CreateVideoForm() {
               Category
             </h3>
             <div className="relative">
-              <select value={category} onChange={(e) => setCategory(e.target.value)} className="w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 hover:bg-[#FFF0F2]/45 focus:bg-white focus:border-[#B31046] focus:ring-2 focus:ring-[#B31046]/5 px-4 py-3.5 rounded-2xl text-xs font-semibold text-zinc-800 outline-none transition-all appearance-none cursor-pointer">
-                {VIDEO_CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
+              <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} className="w-full bg-[#FFF0F2]/30 border border-[#FFF0F2]/50 hover:bg-[#FFF0F2]/45 focus:bg-white focus:border-[#B31046] focus:ring-2 focus:ring-[#B31046]/5 px-4 py-3.5 rounded-2xl text-xs font-semibold text-zinc-800 outline-none transition-all appearance-none cursor-pointer">
+                {categories.length === 0 ? (
+                  <option value="">No categories loaded</option>
+                ) : (
+                  categories.map((cat) => <option key={cat.id} value={cat.id}>{cat.name}</option>)
+                )}
               </select>
               <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400 pointer-events-none" />
             </div>
@@ -501,6 +810,12 @@ function CreateVideoForm() {
             : "Select Featured Image"
         }
         type={mediaModalMode === "video" ? "video" : "image"}
+      />
+
+      <NavigationGuard
+        isDirty={isDirty && !isSubmitting}
+        onSaveAsDraft={handleSaveAsDraft}
+        onDiscard={() => {}}
       />
     </div>
   );

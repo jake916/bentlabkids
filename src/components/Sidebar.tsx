@@ -47,18 +47,18 @@ const NAV_SECTIONS = [
     label: "STORE",
     items: [
       { label: "Products", href: "/products", icon: ShoppingBag },
-      { label: "Product Categories", href: "/dashboard/product-categories", icon: Tag },
-      { label: "Orders", href: "/dashboard/orders", icon: ClipboardList },
-      { label: "Customers", href: "/dashboard/customers", icon: Users },
+      { label: "Product Categories", href: "/product-categories", icon: Tag },
+      { label: "Orders", href: "/orders", icon: ClipboardList },
+      { label: "Customers", href: "/customers", icon: Users },
     ],
   },
   {
     label: "SYSTEM",
     items: [
-      { label: "Settings", href: "/dashboard/settings", icon: Settings },
-      { label: "Admin Management", href: "/dashboard/admin-management", icon: ShieldCheck },
-      { label: "App Users", href: "/dashboard/app-users", icon: UserCog },
-      { label: "Support", href: "/dashboard/support", icon: Headphones },
+      { label: "Settings", href: "/settings", icon: Settings },
+      { label: "Admin Management", href: "/admin-management", icon: ShieldCheck },
+      { label: "App Users", href: "/app-users", icon: UserCog },
+      { label: "Support", href: "/support", icon: Headphones },
     ],
   },
 ];

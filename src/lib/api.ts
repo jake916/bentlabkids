@@ -1,15 +1,32 @@
-const BASE_URL = typeof window !== "undefined"
-  ? ""
-  : (process.env.NEXT_PUBLIC_API_URL || "");
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+
+export const LIBRARY_CDN_MAP: Record<string, string> = {
+  "689681": "vz-b41c560a-0e2.b-cdn.net",
+};
 
 export function resolveAssetUrl(url: string | undefined | null): string {
-  if (!url) return "";
-  if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("data:")) {
-    return url;
+  if (!url) return "/logogo.png";
+
+  // Rewrite legacy/broken Bunny play thumbnail URLs to b-cdn.net CDN URLs
+  let cleanUrl = url;
+  if (url.includes("iframe.mediadelivery.net/play/")) {
+    const withoutQueryParams = url.split("?")[0].split("#")[0];
+    const parts = withoutQueryParams.split("/").filter(Boolean);
+    const playIndex = parts.indexOf("play");
+    if (playIndex !== -1 && parts[playIndex + 2]) {
+      const libraryId = parts[playIndex + 1];
+      const videoId = parts[playIndex + 2];
+      const cdnHost = LIBRARY_CDN_MAP[libraryId] || `vz-${libraryId}.b-cdn.net`;
+      cleanUrl = `https://${cdnHost}/${videoId}/thumbnail.jpg`;
+    }
+  }
+
+  if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://") || cleanUrl.startsWith("data:")) {
+    return cleanUrl;
   }
   const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
   const cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
-  const cleanPath = url.startsWith("/") ? url : `/${url}`;
+  const cleanPath = cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
   return `${cleanBase}${cleanPath}`;
 }
 
@@ -18,7 +35,19 @@ export function getBunnyThumbnailUrl(playbackUrl: string | undefined | null): st
     return null;
   }
   const cleanUrl = playbackUrl.split("?")[0].split("#")[0];
-  const parts = cleanUrl.split("/");
+  const parts = cleanUrl.split("/").filter(Boolean);
+  
+  const playIndex = parts.indexOf("play");
+  const embedIndex = parts.indexOf("embed");
+  const actionIndex = playIndex !== -1 ? playIndex : embedIndex;
+
+  if (actionIndex !== -1 && parts[actionIndex + 2]) {
+    const libraryId = parts[actionIndex + 1];
+    const videoId = parts[actionIndex + 2];
+    const cdnHost = LIBRARY_CDN_MAP[libraryId] || `vz-${libraryId}.b-cdn.net`;
+    return `https://${cdnHost}/${videoId}/thumbnail.jpg`;
+  }
+
   const videoId = parts[parts.length - 1];
   if (videoId) {
     return `https://iframe.mediadelivery.net/${videoId}/thumbnail.jpg`;
@@ -29,6 +58,7 @@ export function getBunnyThumbnailUrl(playbackUrl: string | undefined | null): st
 export interface ApiError {
   message: string;
   status: number;
+  errors?: any;
 }
 
 // ─── Generic Fetch Helper ────────────────────────────────────────────────────
@@ -77,7 +107,7 @@ async function apiFetch<T>(
       }
     }
 
-    throw { message, status: res.status } as ApiError;
+    throw { message, status: res.status, errors: body?.errors } as ApiError;
   }
 
   return body as T;
@@ -360,6 +390,7 @@ export interface PrayerResponse {
   verseReference: string | null;
   ageGroup: "TODDLER" | "PRESCHOOL" | "EARLY" | "KIDS" | null;
   featuredImage: string | null;
+  prayerWhen: string | null;
   status: "DRAFT" | "PUBLISHED" | "SCHEDULED";
   scheduledFor: string | null;
   publishedAt: string | null;
@@ -384,6 +415,7 @@ export interface CreatePrayerPayload {
   categoryId?: string;
   image?: string;
   tags?: string[];
+  prayerWhen?: string | null;
   scheduledFor?: string | null;
   status?: "DRAFT" | "PUBLISHED" | "SCHEDULED";
 }
@@ -537,6 +569,12 @@ export async function deleteVideo(id: string): Promise<{ success: boolean; messa
   });
 }
 
+export async function deleteImage(imageId: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(`/api/v1/admin/uploads/images/${encodeURIComponent(imageId)}`, {
+    method: "DELETE",
+  });
+}
+
 export interface VideoStatusResponse {
   success: boolean;
   data: {
@@ -630,6 +668,68 @@ export async function deleteVideoContent(id: string): Promise<{ success: boolean
     method: "DELETE",
   });
 }
+
+export interface CreateVideoContentPayload {
+  title: string;
+  slug?: string;
+  content: string; // maps to description
+  verseReference?: string;
+  duration?: number;
+  categoryId?: string;
+  image?: string; // Cloudinary thumbnail URL
+  videoAssetId?: string;
+  ageGroup?: string; // e.g. "TODDLER" | "PRESCHOOL" | "EARLY" | "KIDS"
+  tags?: string[];
+  status?: string; // "DRAFT" | "PUBLISHED" | "SCHEDULED"
+  scheduledFor?: string | null;
+}
+
+export interface SingleVideoContentResponse {
+  success: boolean;
+  data: VideoContentItem;
+}
+
+export async function createVideoContent(
+  payload: CreateVideoContentPayload
+): Promise<SingleVideoContentResponse> {
+  return apiFetch<SingleVideoContentResponse>("/api/v1/admin/video-contents", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getVideoContentById(
+  id: string
+): Promise<SingleVideoContentResponse> {
+  return apiFetch<SingleVideoContentResponse>(`/api/v1/admin/video-contents/${id}`);
+}
+
+export async function updateVideoContent(
+  id: string,
+  payload: Partial<CreateVideoContentPayload>
+): Promise<SingleVideoContentResponse> {
+  return apiFetch<SingleVideoContentResponse>(`/api/v1/admin/video-contents/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function publishVideoContent(
+  id: string
+): Promise<SingleVideoContentResponse> {
+  return apiFetch<SingleVideoContentResponse>(`/api/v1/admin/video-contents/${id}/publish`, {
+    method: "PATCH",
+  });
+}
+
+export async function unpublishVideoContent(
+  id: string
+): Promise<SingleVideoContentResponse> {
+  return apiFetch<SingleVideoContentResponse>(`/api/v1/admin/video-contents/${id}/unpublish`, {
+    method: "PATCH",
+  });
+}
+
 
 // ─── Admin Categories ─────────────────────────────────────────────────────────
 
@@ -730,3 +830,329 @@ export async function deleteCategory(
     { method: "DELETE" }
   );
 }
+
+// ─── E-Commerce Product Categories ─────────────────────────────────────────────
+
+export interface ProductCategory {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  _count: {
+    products: number;
+  };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductCategoryPayload {
+  name: string;
+  slug: string;
+  description?: string;
+}
+
+export interface ListProductCategoriesResponse {
+  success: boolean;
+  data: ProductCategory[];
+}
+
+export interface SingleProductCategoryResponse {
+  success: boolean;
+  data: ProductCategory;
+}
+
+export async function getProductCategories(): Promise<ListProductCategoriesResponse> {
+  return apiFetch<ListProductCategoriesResponse>("/api/v1/admin/product-categories");
+}
+
+export async function createProductCategory(
+  payload: CreateProductCategoryPayload
+): Promise<SingleProductCategoryResponse> {
+  return apiFetch<SingleProductCategoryResponse>("/api/v1/admin/product-categories", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getProductCategoryById(
+  id: string
+): Promise<SingleProductCategoryResponse> {
+  return apiFetch<SingleProductCategoryResponse>(`/api/v1/admin/product-categories/${id}`);
+}
+
+export async function updateProductCategory(
+  id: string,
+  payload: Partial<CreateProductCategoryPayload>
+): Promise<SingleProductCategoryResponse> {
+  return apiFetch<SingleProductCategoryResponse>(`/api/v1/admin/product-categories/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function deleteProductCategory(
+  id: string
+): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(
+    `/api/v1/admin/product-categories/${id}`,
+    { method: "DELETE" }
+  );
+}
+
+// ─── E-Commerce Products ──────────────────────────────────────────────────────
+
+export type ProductApiStatus = "ACTIVE" | "DRAFT" | "OUT_OF_STOCK";
+
+export interface Product {
+  id: string;
+  name: string;
+  slug: string;
+  ageRecommendation: string | null;
+  shortDescription: string | null;
+  fullDescription: string | null;
+  price: number;
+  salePrice: number;
+  featuredImage: string | null;
+  inventory: number;
+  status: ProductApiStatus;
+  category: {
+    id: string;
+    name: string;
+    slug: string;
+    description: string | null;
+    _count?: {
+      products: number;
+    };
+    createdAt?: string;
+    updatedAt?: string;
+  } | null;
+  images: {
+    id: string;
+    url: string;
+  }[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListProductsResponse {
+  success: boolean;
+  data: Product[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export async function getProducts(params?: {
+  categoryId?: string;
+  status?: string;
+  search?: string;
+  page?: number;
+  limit?: number;
+}): Promise<ListProductsResponse> {
+  const query = params
+    ? "?" + new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== "")
+            .map(([k, v]) => [k, String(v)])
+        )
+      ).toString()
+    : "";
+  return apiFetch<ListProductsResponse>(`/api/v1/admin/products${query}`);
+}
+
+export async function deleteProduct(id: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(`/api/v1/admin/products/${id}`, {
+    method: "DELETE",
+  });
+}
+
+export interface CreateProductPayload {
+  name: string;
+  slug?: string;
+  ageRecommendation?: string;
+  shortDescription?: string;
+  fullDescription?: string;
+  price: number;
+  salePrice?: number;
+  featuredImage?: string;
+  images?: string[];
+  inventory: number;
+  status: ProductApiStatus;
+  categoryId: string;
+}
+
+export interface SingleProductResponse {
+  success: boolean;
+  data: Product;
+}
+
+export async function createProduct(
+  payload: CreateProductPayload
+): Promise<SingleProductResponse> {
+  return apiFetch<SingleProductResponse>("/api/v1/admin/products", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getProductById(
+  id: string
+): Promise<SingleProductResponse> {
+  return apiFetch<SingleProductResponse>(`/api/v1/admin/products/${id}`);
+}
+
+export async function updateProduct(
+  id: string,
+  payload: Partial<CreateProductPayload>
+): Promise<SingleProductResponse> {
+  return apiFetch<SingleProductResponse>(`/api/v1/admin/products/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Store Settings API ───────────────────────────────────────────────────────
+
+export interface StoreSettingsApiData {
+  id: string;
+  name: string;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  baseDeliveryFee: number;
+  freeDeliveryEnabled: boolean;
+  freeDeliveryThreshold: number;
+  autoDetectLocationAndCurrency: boolean;
+  allowManualCurrencySwitching: boolean;
+  defaultCurrency: string;
+  refundPolicy: string | null;
+  returnWindowDays: number;
+  processingDaysMin: number;
+  processingDaysMax: number;
+  defaultOrderStatus: string;
+  autoUpdateInventory: boolean;
+  createdAt: string;
+  updatedAt: string;
+  lastUpdatedBy: string | null;
+}
+
+export interface StoreSettingsResponse {
+  success: boolean;
+  data: StoreSettingsApiData;
+}
+
+export async function getStoreSettings(): Promise<StoreSettingsResponse> {
+  return apiFetch<StoreSettingsResponse>("/api/v1/admin/store");
+}
+
+export async function updateStoreSettings(
+  payload: Partial<Omit<StoreSettingsApiData, "id" | "createdAt" | "updatedAt" | "lastUpdatedBy">>
+): Promise<StoreSettingsResponse> {
+  return apiFetch<StoreSettingsResponse>("/api/v1/admin/store", {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+// ─── Admin User & RBAC Management API ──────────────────────────────────────────
+
+export interface Role {
+  id: string;
+  name: string;
+  description: string | null;
+  permissions: { permission: string }[];
+  _count?: { users: number };
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListRolesResponse {
+  success: boolean;
+  data: Role[];
+}
+
+export interface BackendAdminUser {
+  id: string;
+  name: string | null;
+  email: string;
+  emailVerified: boolean;
+  image: string | null;
+  status: "ACTIVE" | "PENDING_INVITATION" | "SUSPENDED" | "DEACTIVATED";
+  role: Role | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListAdminsResponse {
+  success: boolean;
+  data: BackendAdminUser[];
+}
+
+export async function getRoles(): Promise<ListRolesResponse> {
+  return apiFetch<ListRolesResponse>("/api/v1/admin/roles");
+}
+
+export async function getAdmins(params?: {
+  search?: string;
+  roleId?: string;
+  page?: number;
+  limit?: number;
+}): Promise<ListAdminsResponse> {
+  const query = params
+    ? "?" + new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== "")
+            .map(([k, v]) => [k, String(v)])
+        )
+      ).toString()
+    : "";
+  return apiFetch<ListAdminsResponse>(`/api/v1/admin/admins${query}`);
+}
+
+export async function inviteAdmin(payload: {
+  email: string;
+  roleId: string;
+}): Promise<{ success: boolean; data: any }> {
+  return apiFetch<{ success: boolean; data: any }>("/api/v1/admin/users/invite", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function assignUserRole(
+  id: string,
+  payload: { roleId: string }
+): Promise<{ success: boolean; data: any }> {
+  return apiFetch<{ success: boolean; data: any }>(`/api/v1/admin/users/${id}/role`, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function removeUserRole(id: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(`/api/v1/admin/users/${id}/role`, {
+    method: "DELETE",
+  });
+}
+
+export async function deactivateAdmin(id: string): Promise<{ success: boolean; data: any }> {
+  return apiFetch<{ success: boolean; data: any }>(`/api/v1/admin/admins/${id}/deactivate`, {
+    method: "PATCH",
+  });
+}
+
+export async function activateAdmin(id: string): Promise<{ success: boolean; data: any }> {
+  return apiFetch<{ success: boolean; data: any }>(`/api/v1/admin/admins/${id}/activate`, {
+    method: "PATCH",
+  });
+}
+
+
+
