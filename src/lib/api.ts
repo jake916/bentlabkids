@@ -1,4 +1,6 @@
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "";
+const BASE_URL = typeof window !== "undefined"
+  ? ""
+  : (process.env.NEXT_PUBLIC_API_URL || "");
 
 export const LIBRARY_CDN_MAP: Record<string, string> = {
   "689681": "vz-b41c560a-0e2.b-cdn.net",
@@ -65,7 +67,8 @@ export interface ApiError {
 
 async function apiFetch<T>(
   path: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
+  retryCount = 0
 ): Promise<T> {
   const headers = new Headers(options.headers);
   if (!headers.has("Content-Type")) {
@@ -79,38 +82,77 @@ async function apiFetch<T>(
     }
   }
 
-  const res = await fetch(`${BASE_URL}${path}`, {
-    // Include cookies so session-based auth works correctly
-    credentials: "include",
-    ...options,
-    headers,
-  });
+  try {
+    const res = await fetch(`${BASE_URL}${path}`, {
+      // Include cookies so session-based auth works correctly
+      credentials: "include",
+      ...options,
+      headers,
+    });
 
-  const body = await res.json().catch(() => ({}));
-
-  if (!res.ok) {
-    // Error shape: { success: false, message: string, statusCode: number, errors: ... }
-    const message =
-      body?.message ||
-      body?.error ||
-      `Request failed with status ${res.status}`;
-
-    if (res.status === 401 && typeof window !== "undefined") {
-      const pathname = window.location.pathname;
-      if (
-        pathname !== "/login" &&
-        pathname !== "/forgot-password" &&
-        pathname !== "/reset-password" &&
-        pathname !== "/"
-      ) {
-        window.location.href = "/login";
+    // If Vercel returns 503 or 504, the backend might be asleep (Render cold start)
+    if (
+      (res.status === 503 || res.status === 504) &&
+      retryCount < 2 &&
+      typeof window !== "undefined"
+    ) {
+      const wakeUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (wakeUrl) {
+        console.log(`[API] Received ${res.status}. Attempting to wake up backend at ${wakeUrl}...`);
+        try {
+          // Direct fetch to the absolute backend URL bypasses Vercel's 10s timeout, allowing the browser to wait for Render to wake up
+          await fetch(wakeUrl, { mode: "no-cors" });
+          // Retry the request after a short delay
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          return apiFetch<T>(path, options, retryCount + 1);
+        } catch (wakeErr) {
+          console.warn("[API] Wake up ping failed:", wakeErr);
+        }
       }
     }
 
-    throw { message, status: res.status, errors: body?.errors } as ApiError;
-  }
+    const body = await res.json().catch(() => ({}));
 
-  return body as T;
+    if (!res.ok) {
+      // Error shape: { success: false, message: string, statusCode: number, errors: ... }
+      const message =
+        body?.message ||
+        body?.error ||
+        `Request failed with status ${res.status}`;
+
+      if (res.status === 401 && typeof window !== "undefined") {
+        const pathname = window.location.pathname;
+        if (
+          pathname !== "/login" &&
+          pathname !== "/forgot-password" &&
+          pathname !== "/reset-password" &&
+          pathname !== "/"
+        ) {
+          window.location.href = "/login";
+        }
+      }
+
+      throw { message, status: res.status, errors: body?.errors } as ApiError;
+    }
+
+    return body as T;
+  } catch (err: any) {
+    // If the fetch itself failed (e.g. network error / timeout)
+    if (retryCount < 2 && typeof window !== "undefined") {
+      const wakeUrl = process.env.NEXT_PUBLIC_API_URL;
+      if (wakeUrl) {
+        console.log("[API] Network error. Attempting to wake up backend...");
+        try {
+          await fetch(wakeUrl, { mode: "no-cors" });
+          await new Promise((resolve) => setTimeout(resolve, 2000));
+          return apiFetch<T>(path, options, retryCount + 1);
+        } catch (wakeErr) {
+          console.warn("[API] Wake up ping failed:", wakeErr);
+        }
+      }
+    }
+    throw err;
+  }
 }
 
 // ─── Auth Types ───────────────────────────────────────────────────────────────
