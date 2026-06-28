@@ -418,7 +418,7 @@ export default function VideosPage() {
           />
 
           {/* View Toggle */}
-          <div className="flex items-center bg-white border border-zinc-200 rounded-full p-1 gap-0.5 shadow-sm">
+          <div className="hidden md:flex items-center bg-white border border-zinc-200 rounded-full p-1 gap-0.5 shadow-sm">
             <button
               onClick={() => setViewMode("grid")}
               title="Grid view"
@@ -443,10 +443,18 @@ export default function VideosPage() {
 
       {/* ── Table / Grid ── */}
       {loading ? (
-        viewMode === "list" ? <VideosListSkeleton /> : <VideosGridSkeleton />
+        <>
+          <div className="block md:hidden">
+            <VideosGridSkeleton />
+          </div>
+          <div className="hidden md:block">
+            {viewMode === "list" ? <VideosListSkeleton /> : <VideosGridSkeleton />}
+          </div>
+        </>
       ) : paginatedVideos.length > 0 ? (
-        viewMode === "list" ? (
-          <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
+        <>
+          <div className={viewMode === "list" ? "hidden md:block" : "hidden"}>
+            <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
             {/* Table Header */}
             <div className="grid grid-cols-[56px_2fr_1fr_1.2fr_1fr_1fr_auto] gap-4 px-6 py-3.5 border-b border-zinc-100 bg-zinc-50/60">
               {["Image", "Video Title", "Duration", "Category", "Date Added", "Status", "Actions"].map((h) => (
@@ -457,22 +465,37 @@ export default function VideosPage() {
               {paginatedVideos.map((video) => (
                 <div key={video.id} className="grid grid-cols-[56px_2fr_1fr_1.2fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5 hover:bg-zinc-50/50 transition-colors group">
                   {/* Thumbnail */}
-                  <div 
-                    onClick={() => handlePreviewVideo(video)}
-                    className="w-10 h-10 rounded-xl overflow-hidden shrink-0 relative cursor-pointer group-hover:scale-103 transition-transform duration-200"
-                  >
-                    <img
-                      src={resolveAssetUrl(video.featuredImage || video.videoAsset?.thumbnailUrl || "")}
-                      alt={video.title}
-                      onError={(e) => {
-                        e.currentTarget.src = "/logogo.png";
-                      }}
-                      className="w-full h-full object-cover"
-                    />
-                    <div className="absolute inset-0 bg-black/10 flex items-center justify-center group-hover:bg-black/20 transition-colors">
-                      <Play className="w-3.5 h-3.5 text-white fill-white/80" />
-                    </div>
-                  </div>
+                  {(() => {
+                    const videoImg = video.featuredImage || video.videoAsset?.thumbnailUrl;
+                    const isFallback = !videoImg || videoImg === "/logogo.png";
+                    return (
+                      <div 
+                        onClick={() => handlePreviewVideo(video)}
+                        className={`w-10 h-10 rounded-xl overflow-hidden shrink-0 relative cursor-pointer group-hover:scale-103 transition-transform duration-200 ${isFallback ? "bg-[#FAF8F5]" : ""}`}
+                      >
+                        <img
+                          src={resolveAssetUrl(videoImg || "")}
+                          alt={video.title}
+                          onError={(e) => {
+                            e.currentTarget.src = "/logogo.png";
+                            e.currentTarget.className = "w-full h-full object-contain p-1.5 bg-[#FAF8F5]";
+                            const parent = e.currentTarget.parentElement;
+                            if (parent) {
+                              parent.className = "w-10 h-10 rounded-xl overflow-hidden shrink-0 relative cursor-pointer group-hover:scale-103 transition-transform duration-200 bg-[#FAF8F5]";
+                            }
+                          }}
+                          className={`w-full h-full ${
+                            isFallback 
+                              ? "object-contain p-1.5 bg-[#FAF8F5]" 
+                              : "object-cover"
+                          }`}
+                        />
+                        <div className="absolute inset-0 bg-black/10 flex items-center justify-center group-hover:bg-black/20 transition-colors">
+                          <Play className="w-3.5 h-3.5 text-white fill-white/80" />
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {/* Title + description */}
                   <div 
                     onClick={() => handlePreviewVideo(video)}
@@ -528,41 +551,57 @@ export default function VideosPage() {
               ))}
             </div>
           </div>
-        ) : (
-          /* ── Grid View ── */
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          </div>
+
+          <div className={viewMode === "grid" ? "block" : "block md:hidden"}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {paginatedVideos.map((video) => (
               <div key={video.id} className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm hover:shadow-md transition-shadow flex flex-col">
-                <div 
-                  onClick={() => handlePreviewVideo(video)}
-                  className={`relative aspect-video bg-gradient-to-br ${getGradient(video.id)} flex items-center justify-center overflow-hidden group cursor-pointer`}
-                >
-                  <img
-                    src={resolveAssetUrl(video.featuredImage || video.videoAsset?.thumbnailUrl || "")}
-                    alt={video.title}
-                    onError={(e) => {
-                      e.currentTarget.src = "/logogo.png";
-                    }}
-                    className="w-full h-full object-cover transition-transform hover:scale-103 duration-300"
-                  />
-                  {/* Play Overlay */}
-                  <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                    <div className="w-12 h-12 rounded-full bg-white/95 text-[#B31046] flex items-center justify-center shadow-lg transform group-hover:scale-108 transition-all">
-                      <Play className="w-5 h-5 fill-current ml-0.5" />
+                {(() => {
+                  const videoImg = video.featuredImage || video.videoAsset?.thumbnailUrl;
+                  const isFallback = !videoImg || videoImg === "/logogo.png";
+                  return (
+                    <div 
+                      onClick={() => handlePreviewVideo(video)}
+                      className={`relative aspect-video ${isFallback ? "bg-[#FAF8F5]" : `bg-gradient-to-br ${getGradient(video.id)}`} flex items-center justify-center overflow-hidden group cursor-pointer`}
+                    >
+                      <img
+                        src={resolveAssetUrl(videoImg || "")}
+                        alt={video.title}
+                        onError={(e) => {
+                          e.currentTarget.src = "/logogo.png";
+                          e.currentTarget.className = "w-full h-full object-contain p-6 bg-[#FAF8F5] transition-transform duration-300";
+                          const parent = e.currentTarget.parentElement;
+                          if (parent) {
+                            parent.className = "relative aspect-video bg-[#FAF8F5] flex items-center justify-center overflow-hidden group cursor-pointer";
+                          }
+                        }}
+                        className={`w-full h-full transition-transform duration-300 ${
+                          isFallback 
+                            ? "object-contain p-6 bg-[#FAF8F5]" 
+                            : "object-cover hover:scale-103"
+                        }`}
+                      />
+                      {/* Play Overlay */}
+                      <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                        <div className="w-12 h-12 rounded-full bg-white/95 text-[#B31046] flex items-center justify-center shadow-lg transform group-hover:scale-108 transition-all">
+                          <Play className="w-5 h-5 fill-current ml-0.5" />
+                        </div>
+                      </div>
+                      {/* Duration Badge */}
+                      <span className="absolute bottom-4 left-4 text-[10px] font-extrabold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-md flex items-center gap-1 select-none">
+                        <Clock className="w-3 h-3" />
+                        {formatDuration(video.duration || video.videoAsset?.durationSeconds)}
+                      </span>
+                      {/* Status Badge */}
+                      <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
+                        video.status === "PUBLISHED" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
+                        : video.status === "SCHEDULED" ? "bg-blue-50/90 text-blue-600 border border-blue-100/50"
+                        : "bg-zinc-800/40 text-zinc-200 border border-white/10"
+                      }`}>{video.status}</span>
                     </div>
-                  </div>
-                  {/* Duration Badge */}
-                  <span className="absolute bottom-4 left-4 text-[10px] font-extrabold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-md flex items-center gap-1 select-none">
-                    <Clock className="w-3 h-3" />
-                    {formatDuration(video.duration || video.videoAsset?.durationSeconds)}
-                  </span>
-                  {/* Status Badge */}
-                  <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
-                    video.status === "PUBLISHED" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
-                    : video.status === "SCHEDULED" ? "bg-blue-50/90 text-blue-600 border border-blue-100/50"
-                    : "bg-zinc-800/40 text-zinc-200 border border-white/10"
-                  }`}>{video.status}</span>
-                </div>
+                  );
+                })()}
                 {/* Info */}
                 <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
                   <div className="space-y-2">
@@ -613,7 +652,8 @@ export default function VideosPage() {
               </div>
             ))}
           </div>
-        )
+          </div>
+        </>
       ) : (
         <div className="bg-white rounded-3xl py-20 text-center border border-zinc-100 shadow-sm space-y-2">
           <p className="text-sm font-extrabold text-zinc-700">No videos found</p>

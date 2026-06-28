@@ -271,21 +271,19 @@ export async function getCurrentUser(): Promise<GetMeResponse> {
 
 export interface StatItem {
   count: number;
-  thisweek: number;
+  thisWeek: number;
   growthPct: number;
 }
 
 export interface AdminStatsResponse {
-  success: boolean;
-  data: {
-    bibleStories: StatItem;
-    prayers: StatItem;
-    videos: StatItem;
-    categories: {
-      count: number;
-    };
-    users: StatItem;
+  bibleStories: StatItem;
+  prayers: StatItem;
+  videos: StatItem;
+  categories: {
+    count: number;
   };
+  users: StatItem;
+  recentBibleStories?: any[];
 }
 
 export async function getAdminStats(): Promise<AdminStatsResponse> {
@@ -1110,8 +1108,8 @@ export interface Role {
   description: string | null;
   permissions: { permission: string }[];
   _count?: { users: number };
-  createdAt: string;
-  updatedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ListRolesResponse {
@@ -1126,7 +1124,7 @@ export interface BackendAdminUser {
   emailVerified: boolean;
   image: string | null;
   status: "ACTIVE" | "PENDING_INVITATION" | "SUSPENDED" | "DEACTIVATED";
-  role: Role | null;
+  adminType: "SUPER_ADMIN" | "ADMIN" | "CONTENT_ADMIN" | "PRODUCT_ADMIN" | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1136,13 +1134,9 @@ export interface ListAdminsResponse {
   data: BackendAdminUser[];
 }
 
-export async function getRoles(): Promise<ListRolesResponse> {
-  return apiFetch<ListRolesResponse>("/api/v1/admin/roles");
-}
-
 export async function getAdmins(params?: {
   search?: string;
-  roleId?: string;
+  adminType?: string;
   page?: number;
   limit?: number;
 }): Promise<ListAdminsResponse> {
@@ -1160,7 +1154,7 @@ export async function getAdmins(params?: {
 
 export async function inviteAdmin(payload: {
   email: string;
-  roleId: string;
+  adminType: "SUPER_ADMIN" | "ADMIN" | "CONTENT_ADMIN" | "PRODUCT_ADMIN";
 }): Promise<{ success: boolean; data: any }> {
   return apiFetch<{ success: boolean; data: any }>("/api/v1/admin/users/invite", {
     method: "POST",
@@ -1170,16 +1164,16 @@ export async function inviteAdmin(payload: {
 
 export async function assignUserRole(
   id: string,
-  payload: { roleId: string }
+  payload: { adminType: "SUPER_ADMIN" | "ADMIN" | "CONTENT_ADMIN" | "PRODUCT_ADMIN" }
 ): Promise<{ success: boolean; data: any }> {
-  return apiFetch<{ success: boolean; data: any }>(`/api/v1/admin/users/${id}/role`, {
+  return apiFetch<{ success: boolean; data: any }>(`/api/v1/admin/admins/${id}/type`, {
     method: "PATCH",
     body: JSON.stringify(payload),
   });
 }
 
-export async function removeUserRole(id: string): Promise<{ success: boolean; message: string }> {
-  return apiFetch<{ success: boolean; message: string }>(`/api/v1/admin/users/${id}/role`, {
+export async function deleteAdmin(id: string): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>(`/api/v1/admin/admins/${id}`, {
     method: "DELETE",
   });
 }
@@ -1193,6 +1187,26 @@ export async function deactivateAdmin(id: string): Promise<{ success: boolean; d
 export async function activateAdmin(id: string): Promise<{ success: boolean; data: any }> {
   return apiFetch<{ success: boolean; data: any }>(`/api/v1/admin/admins/${id}/activate`, {
     method: "PATCH",
+  });
+}
+
+export interface ValidateInvitationResponse {
+  valid: boolean;
+  email: string;
+  adminType: string;
+}
+
+export async function validateInvitation(token: string): Promise<ValidateInvitationResponse> {
+  return apiFetch<ValidateInvitationResponse>(`/auth/invitations/${token}`);
+}
+
+export async function acceptInvitation(payload: {
+  token: string;
+  password: string;
+}): Promise<{ success: boolean; message: string }> {
+  return apiFetch<{ success: boolean; message: string }>("/auth/invitations/accept", {
+    method: "POST",
+    body: JSON.stringify(payload),
   });
 }
 

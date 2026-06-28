@@ -21,6 +21,7 @@ import {
   Headphones,
   LogOut,
   CircleUserRound,
+  X,
 } from "lucide-react";
 import { signOut } from "@/lib/api";
 
@@ -67,11 +68,12 @@ const NAV_SECTIONS = [
 
 interface SidebarProps {
   userName?: string;
+  onClose?: () => void;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function Sidebar({ userName = "Administrator" }: SidebarProps) {
+export default function Sidebar({ userName = "Administrator", onClose }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -104,7 +106,7 @@ export default function Sidebar({ userName = "Administrator" }: SidebarProps) {
   return (
     <aside className="sticky top-0 h-screen w-[240px] flex flex-col bg-white border-r border-zinc-100 shrink-0">
       {/* Logo */}
-      <div className="px-5 py-5 border-b border-zinc-100">
+      <div className="px-5 py-5 border-b border-zinc-100 flex items-center justify-between">
         <Image
           src="/logogo.png"
           alt="Bentlab Kids TV"
@@ -113,6 +115,14 @@ export default function Sidebar({ userName = "Administrator" }: SidebarProps) {
           className="h-12 w-auto object-contain"
           priority
         />
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-zinc-400 hover:bg-zinc-50 hover:text-zinc-600 md:hidden transition-colors cursor-pointer"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}

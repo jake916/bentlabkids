@@ -15,7 +15,7 @@ const passwords = [
 
 async function testPassword(password) {
   try {
-    const res = await fetch('https://bentlabkids-api.onrender.com/api/v1/sign-in', {
+    const res = await fetch('https://bentlabkids-api-bxzh.onrender.com/api/v1/sign-in', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email: 'admin@bentlab.tv', password })

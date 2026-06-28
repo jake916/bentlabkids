@@ -451,7 +451,7 @@ export default function BibleStoriesPage() {
           />
 
           {/* View Toggle */}
-          <div className="flex items-center bg-white border border-zinc-200 rounded-full p-1 gap-0.5 shadow-sm">
+          <div className="hidden md:flex items-center bg-white border border-zinc-200 rounded-full p-1 gap-0.5 shadow-sm">
             <button
               onClick={() => setViewMode("grid")}
               title="Grid view"
@@ -484,145 +484,183 @@ export default function BibleStoriesPage() {
 
       {/* ── Story Grid / List ── */}
       {loading ? (
-        viewMode === "grid" ? <BibleStoriesGridSkeleton /> : <BibleStoriesListSkeleton />
+        <>
+          <div className="block md:hidden">
+            <BibleStoriesGridSkeleton />
+          </div>
+          <div className="hidden md:block">
+            {viewMode === "grid" ? <BibleStoriesGridSkeleton /> : <BibleStoriesListSkeleton />}
+          </div>
+        </>
       ) : paginatedStories.length > 0 ? (
-        viewMode === "grid" ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {paginatedStories.map((story) => (
-              <div
-                key={story.id}
-                className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm hover:shadow-md transition-shadow flex flex-col"
-              >
-                <div className={`relative aspect-video bg-gradient-to-br ${story.gradient} flex items-center justify-center overflow-hidden`}>
-                  <img
-                    src={story.imageUrl}
-                    alt={story.title}
-                    onError={(e) => {
-                      e.currentTarget.src = "/logogo.png";
-                    }}
-                    className="w-full h-full object-cover transition-transform hover:scale-103 duration-300"
-                  />
-                  <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
-                    story.status === "Published" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
-                    : story.status === "Scheduled" ? "bg-blue-100/80 text-blue-800 border border-blue-200/30"
-                    : "bg-zinc-800/40 text-zinc-200 border border-white/10"
-                  }`}>{story.status}</span>
-                </div>
-                {/* Info */}
-                <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                  <div className="space-y-2">
-                    <h3 className="text-base font-extrabold text-zinc-900 leading-snug line-clamp-1 hover:text-[#B31046] transition-colors">{story.title}</h3>
-                    <div className="flex items-center gap-2">
-                      <span className="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-extrabold px-2.5 py-0.5 rounded-md">{story.category}</span>
-                      <span className="text-xs text-zinc-400 font-semibold">{story.date}</span>
+        <>
+          <div className={viewMode === "grid" ? "block" : "block md:hidden"}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {paginatedStories.map((story) => (
+                <div
+                  key={story.id}
+                  className="bg-white rounded-3xl overflow-hidden border border-zinc-100 shadow-sm hover:shadow-md transition-shadow flex flex-col"
+                >
+                  {(() => {
+                    const isFallback = !story.imageUrl || story.imageUrl === "/logogo.png";
+                    return (
+                      <div className={`relative aspect-video ${isFallback ? "bg-[#FAF8F5]" : `bg-gradient-to-br ${story.gradient}`} flex items-center justify-center overflow-hidden w-full`}>
+                        <img
+                          src={story.imageUrl || "/logogo.png"}
+                          alt={story.title}
+                          onError={(e) => {
+                            e.currentTarget.src = "/logogo.png";
+                            e.currentTarget.className = "w-full h-full object-contain p-6 bg-[#FAF8F5] transition-transform duration-300";
+                            const parent = e.currentTarget.parentElement;
+                            if (parent) {
+                              parent.className = "relative aspect-video bg-[#FAF8F5] flex items-center justify-center overflow-hidden w-full";
+                            }
+                          }}
+                          className={`w-full h-full transition-transform duration-300 ${
+                            isFallback 
+                              ? "object-contain p-6 bg-[#FAF8F5]" 
+                              : "object-cover hover:scale-103"
+                          }`}
+                        />
+                        <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
+                          story.status === "Published" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
+                          : story.status === "Scheduled" ? "bg-blue-100/80 text-blue-800 border border-blue-200/30"
+                          : "bg-zinc-800/40 text-zinc-200 border border-white/10"
+                        }`}>{story.status}</span>
+                      </div>
+                    );
+                  })()}
+                  {/* Info */}
+                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
+                    <div className="space-y-2">
+                      <h3 className="text-base font-extrabold text-zinc-900 leading-snug line-clamp-1 hover:text-[#B31046] transition-colors">{story.title}</h3>
+                      <div className="flex items-center gap-2">
+                        <span className="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-extrabold px-2.5 py-0.5 rounded-md">{story.category}</span>
+                        <span className="text-xs text-zinc-400 font-semibold">{story.date}</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 pt-2">
+                      <button onClick={() => router.push(`/bible-stories/new?edit=${story.id}`)} className="flex-1 py-2 bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-700 font-bold text-xs rounded-full transition-all text-center cursor-pointer select-none active:scale-[0.98]">Edit</button>
+                      {story.status === "Published" ? (
+                        <button
+                          onClick={() => handleTogglePublish(story.id, "unpublish")}
+                          disabled={togglingId === story.id}
+                          className="p-2 hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 border border-zinc-200 rounded-full transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                          title="Unpublish to Draft"
+                        >
+                          {togglingId === story.id ? (
+                            <div className="w-4 h-4 border-2 border-zinc-450 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <EyeOff className="w-4 h-4" />
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleTogglePublish(story.id, "publish")}
+                          disabled={togglingId === story.id}
+                          className="p-2 hover:bg-[#FFF0F2] text-[#B31046] border border-zinc-200 hover:border-[#FFF0F2] rounded-full transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                          title="Publish Immediately"
+                        >
+                          {togglingId === story.id ? (
+                            <div className="w-4 h-4 border-2 border-[#B31046] border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Globe className="w-4 h-4" />
+                          )}
+                        </button>
+                      )}
+                      <button onClick={() => setDeletingStory(story)} className="p-2 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] border border-zinc-200 hover:border-[#FFF0F2] rounded-full transition-all cursor-pointer active:scale-[0.95]"><Trash2 className="w-4 h-4" /></button>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 pt-2">
-                    <button onClick={() => router.push(`/bible-stories/new?edit=${story.id}`)} className="flex-1 py-2 bg-white hover:bg-zinc-50 border border-zinc-200 text-zinc-700 font-bold text-xs rounded-full transition-all text-center cursor-pointer select-none active:scale-[0.98]">Edit</button>
-                    {story.status === "Published" ? (
-                      <button
-                        onClick={() => handleTogglePublish(story.id, "unpublish")}
-                        disabled={togglingId === story.id}
-                        className="p-2 hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 border border-zinc-200 rounded-full transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
-                        title="Unpublish to Draft"
-                      >
-                        {togglingId === story.id ? (
-                          <div className="w-4 h-4 border-2 border-zinc-450 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <EyeOff className="w-4 h-4" />
-                        )}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleTogglePublish(story.id, "publish")}
-                        disabled={togglingId === story.id}
-                        className="p-2 hover:bg-[#FFF0F2] text-[#B31046] border border-zinc-200 hover:border-[#FFF0F2] rounded-full transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
-                        title="Publish Immediately"
-                      >
-                        {togglingId === story.id ? (
-                          <div className="w-4 h-4 border-2 border-[#B31046] border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Globe className="w-4 h-4" />
-                        )}
-                      </button>
-                    )}
-                    <button onClick={() => setDeletingStory(story)} className="p-2 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] border border-zinc-200 hover:border-[#FFF0F2] rounded-full transition-all cursor-pointer active:scale-[0.95]"><Trash2 className="w-4 h-4" /></button>
-                  </div>
                 </div>
+              ))}
+            </div>
+          </div>
+
+          <div className={viewMode === "list" ? "hidden md:block" : "hidden"}>
+            <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
+              {/* Header */}
+              <div className="grid grid-cols-[56px_2fr_1.2fr_1fr_1fr_auto] gap-4 px-6 py-3.5 border-b border-zinc-100 bg-zinc-50/60">
+                {["Image", "Story Title", "Category", "Date Added", "Status", "Actions"].map((h) => (
+                  <span key={h} className="text-[10px] font-extrabold text-zinc-400 tracking-widest uppercase">{h}</span>
+                ))}
               </div>
-            ))}
-          </div>
-        ) : (
-          /* ── List View ── */
-          <div className="bg-white rounded-3xl border border-zinc-100 shadow-sm overflow-hidden">
-            {/* Header */}
-            <div className="grid grid-cols-[56px_2fr_1.2fr_1fr_1fr_auto] gap-4 px-6 py-3.5 border-b border-zinc-100 bg-zinc-50/60">
-              {["Image", "Story Title", "Category", "Date Added", "Status", "Actions"].map((h) => (
-                <span key={h} className="text-[10px] font-extrabold text-zinc-400 tracking-widest uppercase">{h}</span>
-              ))}
-            </div>
-            <div className="divide-y divide-zinc-50">
-              {paginatedStories.map((story) => (
-                <div key={story.id} className="grid grid-cols-[56px_2fr_1.2fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5 hover:bg-zinc-50/50 transition-colors group">
-                  <div className="w-10 h-10 rounded-xl overflow-hidden shrink-0">
-                    <img
-                      src={story.imageUrl}
-                      alt={story.title}
-                      onError={(e) => {
-                        e.currentTarget.src = "/logogo.png";
-                      }}
-                      className="w-full h-full object-cover"
-                    />
+              <div className="divide-y divide-zinc-50">
+                {paginatedStories.map((story) => (
+                  <div key={story.id} className="grid grid-cols-[56px_2fr_1.2fr_1fr_1fr_auto] gap-4 items-center px-6 py-3.5 hover:bg-zinc-50/50 transition-colors group">
+                    {(() => {
+                      const isFallback = !story.imageUrl || story.imageUrl === "/logogo.png";
+                      return (
+                        <div className={`w-10 h-10 rounded-xl overflow-hidden shrink-0 ${isFallback ? "bg-[#FAF8F5]" : ""}`}>
+                          <img
+                            src={story.imageUrl || "/logogo.png"}
+                            alt={story.title}
+                            onError={(e) => {
+                              e.currentTarget.src = "/logogo.png";
+                              e.currentTarget.className = "w-full h-full object-contain p-1.5 bg-[#FAF8F5]";
+                              const parent = e.currentTarget.parentElement;
+                              if (parent) {
+                                parent.className = "w-10 h-10 rounded-xl overflow-hidden shrink-0 bg-[#FAF8F5]";
+                              }
+                            }}
+                            className={`w-full h-full ${
+                              isFallback 
+                                ? "object-contain p-1.5 bg-[#FAF8F5]" 
+                                : "object-cover"
+                            }`}
+                          />
+                        </div>
+                      );
+                    })()}
+                    {/* Title */}
+                    <p className="text-sm font-extrabold text-zinc-900 truncate">{story.title}</p>
+                    {/* Category */}
+                    <span className="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-extrabold px-2.5 py-0.5 rounded-md inline-block w-fit">{story.category}</span>
+                    {/* Date */}
+                    <span className="text-xs font-semibold text-zinc-500">{story.date}</span>
+                    {/* Status */}
+                    <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase border w-fit ${
+                      story.status === "Published" ? "bg-emerald-100 text-emerald-700 border-emerald-200"
+                      : story.status === "Scheduled" ? "bg-blue-50 text-blue-600 border-blue-100"
+                      : "bg-zinc-100 text-zinc-500 border-zinc-200"
+                    }`}>{story.status}</span>
+                    {/* Actions */}
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => router.push(`/bible-stories/new?edit=${story.id}`)} className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] hover:border-[#FFF0F2] transition-all cursor-pointer" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
+                      {story.status === "Published" ? (
+                        <button
+                          onClick={() => handleTogglePublish(story.id, "unpublish")}
+                          disabled={togglingId === story.id}
+                          className="p-1.5 rounded-full border border-zinc-200 hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 hover:border-zinc-300 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                          title="Unpublish to Draft"
+                        >
+                          {togglingId === story.id ? (
+                            <div className="w-3.5 h-3.5 border-2 border-zinc-450 border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleTogglePublish(story.id, "publish")}
+                          disabled={togglingId === story.id}
+                          className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-[#B31046] hover:border-[#FFF0F2] transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
+                          title="Publish Immediately"
+                        >
+                          {togglingId === story.id ? (
+                            <div className="w-3.5 h-3.5 border-2 border-[#B31046] border-t-transparent rounded-full animate-spin" />
+                          ) : (
+                            <Globe className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      )}
+                      <button onClick={() => setDeletingStory(story)} className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] hover:border-[#FFF0F2] transition-all cursor-pointer" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
+                    </div>
                   </div>
-                  {/* Title */}
-                  <p className="text-sm font-extrabold text-zinc-900 truncate">{story.title}</p>
-                  {/* Category */}
-                  <span className="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-extrabold px-2.5 py-0.5 rounded-md inline-block w-fit">{story.category}</span>
-                  {/* Date */}
-                  <span className="text-xs font-semibold text-zinc-500">{story.date}</span>
-                  {/* Status */}
-                  <span className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-extrabold tracking-wider uppercase border w-fit ${
-                    story.status === "Published" ? "bg-emerald-100 text-emerald-700 border-emerald-200"
-                    : story.status === "Scheduled" ? "bg-blue-50 text-blue-600 border-blue-100"
-                    : "bg-zinc-100 text-zinc-500 border-zinc-200"
-                  }`}>{story.status}</span>
-                  {/* Actions */}
-                  <div className="flex items-center gap-2">
-                    <button onClick={() => router.push(`/bible-stories/new?edit=${story.id}`)} className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] hover:border-[#FFF0F2] transition-all cursor-pointer" title="Edit"><Pencil className="w-3.5 h-3.5" /></button>
-                    {story.status === "Published" ? (
-                      <button
-                        onClick={() => handleTogglePublish(story.id, "unpublish")}
-                        disabled={togglingId === story.id}
-                        className="p-1.5 rounded-full border border-zinc-200 hover:bg-zinc-100 text-zinc-400 hover:text-zinc-700 hover:border-zinc-300 transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
-                        title="Unpublish to Draft"
-                      >
-                        {togglingId === story.id ? (
-                          <div className="w-3.5 h-3.5 border-2 border-zinc-450 border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <EyeOff className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    ) : (
-                      <button
-                        onClick={() => handleTogglePublish(story.id, "publish")}
-                        disabled={togglingId === story.id}
-                        className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-[#B31046] hover:border-[#FFF0F2] transition-all cursor-pointer disabled:opacity-50 flex items-center justify-center"
-                        title="Publish Immediately"
-                      >
-                        {togglingId === story.id ? (
-                          <div className="w-3.5 h-3.5 border-2 border-[#B31046] border-t-transparent rounded-full animate-spin" />
-                        ) : (
-                          <Globe className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    )}
-                    <button onClick={() => setDeletingStory(story)} className="p-1.5 rounded-full border border-zinc-200 hover:bg-[#FFF0F2] text-zinc-400 hover:text-[#B31046] hover:border-[#FFF0F2] transition-all cursor-pointer" title="Delete"><Trash2 className="w-3.5 h-3.5" /></button>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           </div>
-        )
+        </>
       ) : (
         <div className="bg-white rounded-3xl py-20 text-center border border-zinc-150 shadow-sm space-y-2.5">
           <p className="text-base font-extrabold text-zinc-700">No stories found</p>

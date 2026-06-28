@@ -131,7 +131,7 @@ export default function SupportPage() {
   ).length;
 
   return (
-    <div className="space-y-6">
+    <div className="min-h-full p-8 space-y-6">
       {/* ── Page Header ── */}
       <div>
         <h1 className="text-3xl font-black text-zinc-900 tracking-tight">Support</h1>

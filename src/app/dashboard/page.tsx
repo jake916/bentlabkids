@@ -14,7 +14,6 @@ import {
   CircleUserRound,
   Plus,
   Play,
-  LayoutGrid,
 } from "lucide-react";
 import { getCurrentUser, getAdminStats, AdminStatsResponse, getStories } from "@/lib/api";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
@@ -78,7 +77,7 @@ const QUICK_ACTIONS = [
   },
   {
     label: "Add Product",
-    href: "/dashboard/products/new",
+    href: "/products/new",
     icon: ShoppingBag,
     iconBg: "bg-amber-50",
     iconColor: "text-amber-500",
@@ -173,7 +172,7 @@ function orderStatusStyle(status: OrderStatus) {
 
 export default function DashboardPage() {
   const [userName, setUserName] = useState<string>("Curator");
-  const [statsData, setStatsData] = useState<AdminStatsResponse["data"] | null>(null);
+  const [statsData, setStatsData] = useState<AdminStatsResponse | null>(null);
   const [recentStories, setRecentStories] = useState<Story[]>([]);
   const [loadingStories, setLoadingStories] = useState<boolean>(true);
   const [loadingStats, setLoadingStats] = useState<boolean>(true);
@@ -194,8 +193,8 @@ export default function DashboardPage() {
 
     getAdminStats()
       .then((res) => {
-        if (res?.success) {
-          setStatsData(res.data);
+        if (res && res.bibleStories) {
+          setStatsData(res);
         }
       })
       .catch((err) => {
@@ -254,7 +253,6 @@ export default function DashboardPage() {
     {
       label: "Bible Stories",
       value: statsData?.bibleStories?.count ?? 0,
-      change: statsData?.bibleStories?.thisweek ?? 0,
       icon: BookOpen,
       iconBg: "bg-rose-50",
       iconColor: "text-rose-500",
@@ -262,7 +260,6 @@ export default function DashboardPage() {
     {
       label: "Prayers",
       value: statsData?.prayers?.count ?? 0,
-      change: statsData?.prayers?.thisweek ?? 0,
       icon: HandHeart,
       iconBg: "bg-blue-50",
       iconColor: "text-blue-500",
@@ -270,22 +267,13 @@ export default function DashboardPage() {
     {
       label: "Videos",
       value: statsData?.videos?.count ?? 0,
-      change: statsData?.videos?.thisweek ?? 0,
       icon: Play,
       iconBg: "bg-emerald-50",
       iconColor: "text-emerald-500",
     },
     {
-      label: "Categories",
-      value: statsData?.categories?.count ?? 0,
-      icon: LayoutGrid,
-      iconBg: "bg-purple-50",
-      iconColor: "text-purple-500",
-    },
-    {
       label: "App Users",
       value: statsData?.users?.count ?? 0,
-      change: statsData?.users?.thisweek ?? 0,
       icon: CircleUserRound,
       iconBg: "bg-pink-50",
       iconColor: "text-pink-500",
@@ -295,38 +283,40 @@ export default function DashboardPage() {
     <div className="min-h-full p-8 space-y-8 font-sans">
 
       {/* ── Header ── */}
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-[#B31046] tracking-tight">Dashboard</h1>
           <p className="text-sm text-zinc-500 mt-0.5">Welcome back, {userName}.</p>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto">
           {/* Search */}
-          <div className="relative">
+          <div className="relative flex-1 md:flex-none">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <input
               type="text"
               placeholder="Search content..."
-              className="pl-9 pr-4 py-2 text-sm bg-[#FFF0F2]/60 border border-zinc-200 rounded-full focus:outline-none focus:border-[#B31046]/40 focus:bg-white transition-all w-52 placeholder-zinc-400"
+              className="pl-9 pr-4 py-2 text-sm bg-[#FFF0F2]/60 border border-zinc-200 rounded-full focus:outline-none focus:border-[#B31046]/40 focus:bg-white transition-all w-full md:w-52 placeholder-zinc-400"
             />
           </div>
 
-          {/* Bell */}
-          <button className="relative p-2 rounded-full hover:bg-zinc-100 transition-colors">
-            <Bell className="w-5 h-5 text-zinc-500" />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#B31046] rounded-full" />
-          </button>
+          <div className="flex items-center gap-4 shrink-0">
+            {/* Bell */}
+            <button className="relative p-2 rounded-full hover:bg-zinc-100 transition-colors">
+              <Bell className="w-5 h-5 text-zinc-500" />
+              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-[#B31046] rounded-full" />
+            </button>
 
-          {/* Avatar */}
-          <div className="w-9 h-9 rounded-full bg-[#FFF0F2] flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-[#B31046]/30 transition-all">
-            <CircleUserRound className="w-6 h-6 text-[#B31046]" />
+            {/* Avatar */}
+            <div className="w-9 h-9 rounded-full bg-[#FFF0F2] flex items-center justify-center cursor-pointer hover:ring-2 hover:ring-[#B31046]/30 transition-all">
+              <CircleUserRound className="w-6 h-6 text-[#B31046]" />
+            </div>
           </div>
         </div>
       </header>
 
       {/* ── Stats Row ── */}
-      <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {statsList.map((stat) => {
           const Icon = stat.icon;
           return (
@@ -344,13 +334,7 @@ export default function DashboardPage() {
               <div>
                 <p className="text-3xl font-extrabold text-zinc-900">{stat.value}</p>
                 <div className="flex items-center gap-2 mt-1">
-                  <span className="text-xs text-zinc-400">this week</span>
-                  {stat.change !== undefined && stat.change > 0 && (
-                    <span className="flex items-center gap-0.5 text-xs font-bold text-emerald-500">
-                      <TrendingUp className="w-3 h-3" />
-                      {stat.change}
-                    </span>
-                  )}
+                  <span className="text-xs text-zinc-400">all time</span>
                 </div>
               </div>
             </div>

@@ -22,16 +22,60 @@ import { ToastContainer, ToastItem } from "@/components/Toast";
 import { AdminUser, getStoredAdmins } from "@/lib/admins-data";
 import {
   getAdmins,
-  getRoles,
   inviteAdmin,
   assignUserRole,
-  removeUserRole,
+  deleteAdmin,
   deactivateAdmin,
   activateAdmin,
   forgotPassword,
   Role,
   BackendAdminUser,
 } from "@/lib/api";
+
+const STATIC_ROLES: Role[] = [
+  {
+    id: "SUPER_ADMIN",
+    name: "Super Admin",
+    description: "Full system access and configurations.",
+    permissions: [
+      { permission: "MANAGE_SYSTEM" },
+      { permission: "MANAGE_ADMINS" },
+      { permission: "MANAGE_USERS" },
+      { permission: "MANAGE_CONTENT" },
+      { permission: "MANAGE_PRODUCTS" }
+    ]
+  },
+  {
+    id: "ADMIN",
+    name: "Admin",
+    description: "Can manage users and most content types.",
+    permissions: [
+      { permission: "MANAGE_USERS" },
+      { permission: "MANAGE_CONTENT" },
+      { permission: "MANAGE_PRODUCTS" }
+    ]
+  },
+  {
+    id: "CONTENT_ADMIN",
+    name: "Content Admin",
+    description: "Upload and organize media assets.",
+    permissions: [
+      { permission: "MANAGE_CONTENT" }
+    ]
+  },
+  {
+    id: "PRODUCT_ADMIN",
+    name: "Product Admin",
+    description: "Manage store items and billing.",
+    permissions: [
+      { permission: "MANAGE_PRODUCTS" }
+    ]
+  }
+];
+
+const getRoleFromType = (adminType: string | null): Role => {
+  return STATIC_ROLES.find(r => r.id === adminType) || STATIC_ROLES[1]; // default to Admin
+};
 
 const getRoleMeta = (roleName: string) => {
   const normalized = roleName.toLowerCase();
@@ -73,7 +117,8 @@ const getRoleMeta = (roleName: string) => {
 function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
   const status: "Active" | "Disabled" = (user.status === "ACTIVE" || user.status === "PENDING_INVITATION") ? "Active" : "Disabled";
 
-  const permissionsList = user.role?.permissions?.map(p => p.permission) || [];
+  const matchedRole = getRoleFromType(user.adminType);
+  const permissionsList = matchedRole.permissions?.map(p => p.permission) || [];
   let accessScope = "No Permissions";
   if (permissionsList.length > 0) {
     accessScope = permissionsList.map(p => {
@@ -81,7 +126,7 @@ function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
         .replace(/\b\w/g, c => c.toUpperCase());
     }).join(", ");
   }
-  if (user.role?.name === "Super Admin") {
+  if (user.adminType === "SUPER_ADMIN") {
     accessScope = "Global / Full Control";
   }
 
@@ -113,7 +158,7 @@ function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
     id: user.id,
     name,
     email: user.email,
-    role: (user.role?.name || "Admin") as any,
+    role: (matchedRole.name || "Admin") as any,
     accessScope,
     status,
     lastLogin: user.status === "PENDING_INVITATION" ? "Pending invitation" : (user.emailVerified ? "Active session" : "Never logged in"),
@@ -198,18 +243,18 @@ export default function AdminManagementPage() {
   const handleDeleteAdmin = async () => {
     if (!selectedAdminForAction) return;
     try {
-      const res = await removeUserRole(selectedAdminForAction.id);
+      const res = await deleteAdmin(selectedAdminForAction.id);
       if (res && res.success) {
-        addToast("success", `Successfully revoked admin role for ${selectedAdminForAction.name}`);
+        addToast("success", `Successfully deleted admin account for ${selectedAdminForAction.name}`);
         setShowDeleteModal(false);
         setSelectedAdminForAction(null);
         await fetchAdminsAndRoles();
       } else {
-        addToast("error", "Failed to remove administrator role");
+        addToast("error", "Failed to delete administrator");
       }
     } catch (err: any) {
-      console.error("Failed to remove admin role:", err);
-      addToast("error", err?.message || "Failed to remove admin role");
+      console.error("Failed to delete admin:", err);
+      addToast("error", err?.message || "Failed to delete admin");
     }
   };
 
@@ -227,10 +272,7 @@ export default function AdminManagementPage() {
   const fetchAdminsAndRoles = async (showLoading = false) => {
     if (showLoading) setLoading(true);
     try {
-      const rolesRes = await getRoles();
-      if (rolesRes && rolesRes.success && rolesRes.data) {
-        setRoles(rolesRes.data);
-      }
+      setRoles(STATIC_ROLES);
 
       const adminsRes = await getAdmins();
       if (adminsRes && adminsRes.success && adminsRes.data) {
@@ -327,7 +369,7 @@ export default function AdminManagementPage() {
     try {
       const res = await inviteAdmin({
         email: formEmail.trim(),
-        roleId: formRoleId
+        adminType: formRoleId as any
       });
       if (res && res.success) {
         addToast("success", `Successfully invited admin ${formEmail}`);
@@ -349,7 +391,7 @@ export default function AdminManagementPage() {
     if (!selectedAdmin || !formRoleId) return;
     try {
       const res = await assignUserRole(selectedAdmin.id, {
-        roleId: formRoleId
+        adminType: formRoleId as any
       });
       if (res && res.success) {
         addToast("success", `Successfully updated role for ${formName}`);

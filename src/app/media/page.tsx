@@ -185,21 +185,21 @@ function Dropdown({ value, options, onChange }: {
 }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="relative">
+    <div className="relative w-full sm:w-auto">
       <button
         onClick={() => setOpen(!open)}
-        className="flex items-center gap-2 px-4 py-2 text-sm font-semibold text-zinc-700 bg-white border border-zinc-200 rounded-full hover:border-zinc-300 transition-all shadow-sm"
+        className="flex items-center justify-between w-full sm:w-auto gap-2 px-4 py-2 text-sm font-semibold text-zinc-700 bg-white border border-zinc-200 rounded-full hover:border-zinc-300 transition-all shadow-sm cursor-pointer"
       >
-        {value}
-        <ChevronDown className="w-4 h-4 text-zinc-400" />
+        <span>{value}</span>
+        <ChevronDown className="w-4 h-4 text-zinc-400 shrink-0" />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 bg-white border border-zinc-100 rounded-xl shadow-lg z-20 min-w-[140px] overflow-hidden">
+        <div className="absolute top-full left-0 mt-1 bg-white border border-zinc-100 rounded-xl shadow-lg z-20 w-full sm:min-w-[140px] overflow-hidden">
           {options.map((opt) => (
             <button
               key={opt}
               onClick={() => { onChange(opt); setOpen(false); }}
-              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors hover:bg-zinc-50 ${opt === value ? "text-[#B31046] font-semibold" : "text-zinc-700"}`}
+              className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors hover:bg-zinc-50 cursor-pointer ${opt === value ? "text-[#B31046] font-semibold" : "text-zinc-700"}`}
             >
               {opt}
             </button>
@@ -494,7 +494,7 @@ export default function MediaPage() {
       <ToastContainer toasts={toasts} onClose={removeToast} />
 
       {/* ── Header ── */}
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-extrabold text-zinc-900 tracking-tight">Media Library</h1>
           <p className="text-sm text-zinc-500 mt-0.5">All uploaded images in one place</p>
@@ -502,7 +502,7 @@ export default function MediaPage() {
 
         <Link
           href="/media/upload"
-          className="flex items-center gap-2 px-5 py-2.5 bg-[#B31046] hover:bg-[#960d3a] text-white font-bold text-sm rounded-full shadow-md hover:shadow-lg active:scale-[0.98] transition-all"
+          className="flex items-center justify-center gap-2 px-5 py-2.5 bg-[#B31046] hover:bg-[#960d3a] text-white font-bold text-sm rounded-full shadow-md hover:shadow-lg active:scale-[0.98] transition-all w-full sm:w-auto text-center shrink-0"
         >
           <Upload className="w-4 h-4" />
           Upload Media
@@ -510,8 +510,8 @@ export default function MediaPage() {
       </header>
 
       {/* ── Filters ── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
           <Dropdown
             value={filter}
             options={["All Formats", "JPG", "PNG", "WEBP", "MP4", "MOV"]}
@@ -523,7 +523,7 @@ export default function MediaPage() {
             onChange={(v) => setSort(v.replace("Sort by: ", "") as SortType)}
           />
         </div>
-        <span className="text-sm font-semibold text-zinc-500">{TOTAL_FILES} files</span>
+        <span className="text-sm font-semibold text-zinc-500 shrink-0">{TOTAL_FILES} files</span>
       </div>
 
       {/* ── Grid ── */}

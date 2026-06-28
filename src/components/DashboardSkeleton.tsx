@@ -6,7 +6,7 @@ export default function DashboardSkeleton() {
   return (
     <div className="min-h-full p-8 space-y-8 font-sans animate-pulse">
       {/* ── Header Skeleton ── */}
-      <header className="flex items-center justify-between">
+      <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div className="space-y-2">
           {/* Dashboard title skeleton */}
           <div className="h-8 w-36 bg-zinc-200 rounded-lg"></div>
@@ -14,19 +14,22 @@ export default function DashboardSkeleton() {
           <div className="h-4 w-48 bg-zinc-200 rounded-lg"></div>
         </div>
 
-        <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between md:justify-end gap-4 w-full md:w-auto">
           {/* Search bar skeleton */}
-          <div className="h-9 w-52 bg-zinc-200 rounded-full"></div>
-          {/* Bell button skeleton */}
-          <div className="h-9 w-9 bg-zinc-200 rounded-full"></div>
-          {/* Avatar skeleton */}
-          <div className="h-9 w-9 bg-zinc-200 rounded-full"></div>
+          <div className="h-9 flex-1 md:flex-none md:w-52 bg-zinc-200 rounded-full"></div>
+
+          <div className="flex items-center gap-4 shrink-0">
+            {/* Bell button skeleton */}
+            <div className="h-9 w-9 bg-zinc-200 rounded-full"></div>
+            {/* Avatar skeleton */}
+            <div className="h-9 w-9 bg-zinc-200 rounded-full"></div>
+          </div>
         </div>
       </header>
 
       {/* ── Stats Row Skeleton ── */}
-      <section className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        {Array.from({ length: 5 }).map((_, index) => (
+      <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {Array.from({ length: 4 }).map((_, index) => (
           <div
             key={index}
             className="bg-white rounded-2xl p-5 shadow-sm border border-zinc-100 space-y-4"
