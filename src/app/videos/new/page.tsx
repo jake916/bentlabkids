@@ -17,6 +17,7 @@ import {
   getVideoContentById,
   updateVideoContent,
   resolveAssetUrl,
+  resolveVideoPlaybackUrl,
   CategoryApiData,
   publishVideoContent,
   unpublishVideoContent,
@@ -229,7 +230,7 @@ function CreateVideoForm() {
               setAttachedVideo({
                 id: asset.id,
                 name: asset.title,
-                url: resolveAssetUrl(asset.playbackUrl || ""),
+                url: resolveVideoPlaybackUrl(asset.playbackUrl || ""),
                 duration: asset.durationSeconds
                   ? `${Math.floor(asset.durationSeconds / 60)}:${String(asset.durationSeconds % 60).padStart(2, "0")}`
                   : "0:00",
@@ -588,6 +589,8 @@ function CreateVideoForm() {
                   {attachedVideo.url.includes("iframe.mediadelivery.net") ? (
                     <iframe
                       src={attachedVideo.url}
+                      loading="lazy"
+                      referrerPolicy="origin"
                       allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
                       allowFullScreen
                       className="w-full h-full border-0"

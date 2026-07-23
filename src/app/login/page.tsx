@@ -18,6 +18,17 @@ export default function LoginPage() {
   // Status States
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const [cooldown, setCooldown] = useState<number>(0);
+  const [lastSubmitTime, setLastSubmitTime] = useState<number>(0);
+
+  // Cooldown timer countdown
+  React.useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setInterval(() => {
+      setCooldown((prev) => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [cooldown]);
 
   // Toast State
   const [toasts, setToasts] = useState<ToastItem[]>([]);
@@ -37,6 +48,18 @@ export default function LoginPage() {
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+
+    if (cooldown > 0) {
+      setError(`Rate limit active. Please wait ${cooldown} seconds before retrying.`);
+      return;
+    }
+
+    // Client-side debounce: prevent submits within 1.5 seconds of each other
+    const now = Date.now();
+    if (now - lastSubmitTime < 1500) {
+      return;
+    }
+    setLastSubmitTime(now);
 
     if (!email) {
       setError("Please enter your email address");
@@ -85,9 +108,16 @@ export default function LoginPage() {
       router.push("/dashboard");
     } catch (err) {
       const apiErr = err as ApiError;
-      const message = apiErr?.message ?? "Something went wrong. Please try again.";
-      setError(message);
-      showToast(message, "error");
+      if (apiErr?.status === 429) {
+        setCooldown(60);
+        const message = "Too many login attempts. Please wait 60s for the rate-limit to reset.";
+        setError(message);
+        showToast(message, "error");
+      } else {
+        const message = apiErr?.message ?? "Something went wrong. Please try again.";
+        setError(message);
+        showToast(message, "error");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -266,7 +296,7 @@ export default function LoginPage() {
               {/* Submit Button */}
               <button
                 type="submit"
-                disabled={isLoading}
+                disabled={isLoading || cooldown > 0}
                 className="w-full flex items-center justify-center py-4 px-6 border border-transparent rounded-full text-white bg-[#B31046] hover:bg-[#960d3a] active:scale-[0.98] focus:outline-none transition-all font-bold text-base shadow-md hover:shadow-lg disabled:opacity-70 disabled:cursor-not-allowed cursor-pointer"
               >
                 {isLoading ? (
@@ -290,7 +320,11 @@ export default function LoginPage() {
                     />
                   </svg>
                 ) : null}
-                {isLoading ? "Signing in..." : "Sign in"}
+                {isLoading
+                  ? "Signing in..."
+                  : cooldown > 0
+                  ? `Please wait (${cooldown}s)`
+                  : "Sign in"}
               </button>
             </form>
         </div>

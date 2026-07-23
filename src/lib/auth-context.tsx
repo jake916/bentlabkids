@@ -61,12 +61,21 @@ const AuthContext = createContext<AuthContextValue>({
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(() => {
+  const [user, setUser] = useState<User | null>(null);
+  const [adminType, setAdminType] = useState<AdminType | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    // Restore cached storage values on client mount to avoid React Hydration error #418
     if (typeof window !== "undefined") {
       const savedEmail = localStorage.getItem("user_email");
       const savedName = localStorage.getItem("user_name");
+      const cachedType = normalizeAdminType(localStorage.getItem("user_admin_type"));
+
       if (savedEmail || savedName) {
-        return {
+        setUser({
           id: "",
           name: savedName || "",
           email: savedEmail || "",
@@ -76,23 +85,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           status: "ACTIVE",
           createdAt: "",
           updatedAt: "",
-        };
+        });
+      }
+      if (cachedType) {
+        setAdminType(cachedType);
       }
     }
-    return null;
-  });
-
-  const [adminType, setAdminType] = useState<AdminType | null>(() => {
-    if (typeof window !== "undefined") {
-      return normalizeAdminType(localStorage.getItem("user_admin_type"));
-    }
-    return null;
-  });
-
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let cancelled = false;
 
     async function loadAuth() {
       let u: User | null = null;

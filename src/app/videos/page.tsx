@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import { VIDEO_CATEGORIES, VIDEO_CATEGORY_COLOURS } from "@/lib/videoCategories";
-import { getVideoContents, deleteVideoContent, resolveAssetUrl, VideoContentItem, getCategories, CategoryApiData, getVideoContentById, publishVideoContent, unpublishVideoContent } from "@/lib/api";
+import { getVideoContents, deleteVideoContent, resolveAssetUrl, resolveVideoPlaybackUrl, VideoContentItem, getCategories, CategoryApiData, getVideoContentById, publishVideoContent, unpublishVideoContent } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -775,12 +775,14 @@ export default function VideosPage() {
                 </div>
               ) : previewVideo.videoAsset?.playbackUrl ? (
                 (() => {
-                  const resolvedUrl = resolveAssetUrl(previewVideo.videoAsset.playbackUrl);
+                  const resolvedUrl = resolveVideoPlaybackUrl(previewVideo.videoAsset.playbackUrl);
                   const isIframe = resolvedUrl.includes("iframe.mediadelivery.net");
                   if (isIframe) {
                     return (
                       <iframe
                         src={resolvedUrl}
+                        loading="lazy"
+                        referrerPolicy="origin"
                         allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
                         allowFullScreen
                         className="w-full h-full border-0"

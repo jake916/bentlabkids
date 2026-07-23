@@ -18,7 +18,7 @@ import {
   Info,
   AlertTriangle,
 } from "lucide-react";
-import { getUploads, deleteVideo, deleteImage, resolveAssetUrl, getBunnyThumbnailUrl, getVideoStatus } from "@/lib/api";
+import { getUploads, deleteVideo, deleteImage, resolveAssetUrl, resolveVideoPlaybackUrl, getBunnyThumbnailUrl, getVideoStatus } from "@/lib/api";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -291,10 +291,8 @@ export default function MediaPage() {
               const ext = playbackUrl.split(".").pop()?.toUpperCase() || "MP4";
               const type: MediaType = ext === "MOV" ? "MOV" : "MP4";
 
-              // IMPORTANT: Do NOT pass playbackUrl through resolveAssetUrl — it rewrites
-              // Bunny /play/ URLs into /thumbnail.jpg CDN URLs, breaking the video player.
-              // Keep the raw Bunny URL as-is (it's already absolute) for iframe detection.
-              const resolvedUrl = playbackUrl.startsWith("http") ? playbackUrl : resolveAssetUrl(playbackUrl);
+              // Use resolveVideoPlaybackUrl to safely resolve Bunny player URLs or relative paths
+              const resolvedUrl = resolveVideoPlaybackUrl(playbackUrl);
 
               // Derive thumbnail: prefer backend-supplied, fall back to Bunny CDN thumbnail
               const derivedThumbnail = isThumbnailValid(vid.thumbnailUrl)
@@ -801,25 +799,19 @@ export default function MediaPage() {
                     </div>
                   </div>
                 ) : (() => {
-                  // Use rawPlaybackUrl for player-type detection (url may be rewritten by resolveAssetUrl).
-                  // Bunny.net embed URLs use iframe; direct CDN/MP4 URLs use native <video>.
-                  const isBunnyEmbed = !!(detailFile.rawPlaybackUrl || detailFile.url || "").match(
-                    /iframe\.mediadelivery\.net\/(embed|play)\//
-                  );
-                  // Prefer the raw Bunny embed URL for iframe src so the player loads correctly
-                  const iframeSrc = detailFile.rawPlaybackUrl?.includes("iframe.mediadelivery.net")
-                    ? detailFile.rawPlaybackUrl
-                    : detailFile.url;
+                  const resolvedUrl = resolveVideoPlaybackUrl(detailFile.rawPlaybackUrl || detailFile.url);
+                  const isBunnyEmbed = resolvedUrl.includes("iframe.mediadelivery.net");
                   return isBunnyEmbed ? (
                     <iframe
-                      src={iframeSrc}
+                      src={resolvedUrl}
                       loading="lazy"
+                      referrerPolicy="origin"
                       className="w-full h-full border-0 relative z-10"
                       allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
                       allowFullScreen
                     />
                   ) : (
-                    <video src={detailFile.url || undefined} controls className="w-full h-full object-contain relative z-10" />
+                    <video src={resolvedUrl || undefined} controls className="w-full h-full object-contain relative z-10" />
                   );
                 })()
               ) : detailFile.url ? (

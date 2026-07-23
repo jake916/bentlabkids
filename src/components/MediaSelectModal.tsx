@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
-import { getUploads, resolveAssetUrl, getBunnyThumbnailUrl } from "@/lib/api";
+import { getUploads, resolveAssetUrl, resolveVideoPlaybackUrl, getBunnyThumbnailUrl } from "@/lib/api";
 
 export interface MediaFile {
   id: string;
@@ -189,7 +189,7 @@ export default function MediaSelectModal({
               return {
                 id: vid.id,
                 name: vid.title,
-                url: resolveAssetUrl(vid.playbackUrl),
+                url: resolveVideoPlaybackUrl(vid.playbackUrl),
                 thumbnailUrl,
                 duration: vid.durationSeconds
                   ? `${Math.floor(vid.durationSeconds / 60)}:${String(vid.durationSeconds % 60).padStart(2, "0")}`

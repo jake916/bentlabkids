@@ -40,6 +40,25 @@ export function resolveAssetUrl(url: string | undefined | null): string {
   return `${cleanBase}${cleanPath}`;
 }
 
+export function resolveVideoPlaybackUrl(url: string | undefined | null): string {
+  if (!url) return "";
+  let cleanUrl = url.trim();
+
+  // Convert Bunny /play/ URLs to /embed/ player iframe URLs
+  if (cleanUrl.includes("iframe.mediadelivery.net/play/")) {
+    cleanUrl = cleanUrl.replace("iframe.mediadelivery.net/play/", "iframe.mediadelivery.net/embed/");
+  }
+
+  if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://") || cleanUrl.startsWith("data:")) {
+    return cleanUrl;
+  }
+
+  const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+  const cleanBase = baseUrl.endsWith("/") ? baseUrl.slice(0, -1) : baseUrl;
+  const cleanPath = cleanUrl.startsWith("/") ? cleanUrl : `/${cleanUrl}`;
+  return `${cleanBase}${cleanPath}`;
+}
+
 export function getBunnyThumbnailUrl(playbackUrl: string | undefined | null): string | null {
   if (!playbackUrl || !playbackUrl.includes("iframe.mediadelivery.net")) {
     return null;
@@ -125,7 +144,9 @@ async function apiFetch<T>(
       let message =
         body?.message ||
         body?.error ||
-        `Request failed with status ${res.status}`;
+        (res.status === 429
+          ? "Too many login attempts or requests. Please wait 1–2 minutes and try again."
+          : `Request failed with status ${res.status}`);
 
       if (Array.isArray(body?.errors) && body.errors.length > 0) {
         const details = body.errors
