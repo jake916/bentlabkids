@@ -35,6 +35,8 @@ interface MediaFile {
   date: string;
   gradient: string;
   url?: string;
+  /** Raw Bunny.net playback URL (iframe.mediadelivery.net/embed/…) — kept separate so we can detect player type without URL rewriting corrupting it */
+  rawPlaybackUrl?: string;
   width?: number;
   height?: number;
   durationSeconds?: number | null;
@@ -288,7 +290,17 @@ export default function MediaPage() {
               });
               const ext = playbackUrl.split(".").pop()?.toUpperCase() || "MP4";
               const type: MediaType = ext === "MOV" ? "MOV" : "MP4";
-              
+
+              // IMPORTANT: Do NOT pass playbackUrl through resolveAssetUrl — it rewrites
+              // Bunny /play/ URLs into /thumbnail.jpg CDN URLs, breaking the video player.
+              // Keep the raw Bunny URL as-is (it's already absolute) for iframe detection.
+              const resolvedUrl = playbackUrl.startsWith("http") ? playbackUrl : resolveAssetUrl(playbackUrl);
+
+              // Derive thumbnail: prefer backend-supplied, fall back to Bunny CDN thumbnail
+              const derivedThumbnail = isThumbnailValid(vid.thumbnailUrl)
+                ? resolveAssetUrl(vid.thumbnailUrl!)
+                : (getBunnyThumbnailUrl(playbackUrl) || undefined);
+
               files.push({
                 id: `vid-${vid.id}`,
                 name: vid.title + (type === "MOV" ? ".mov" : ".mp4"),
@@ -296,8 +308,9 @@ export default function MediaPage() {
                 size: getMockVideoSize(vid.durationSeconds),
                 date: formatDate(vid.createdAt),
                 gradient: getAvatarBg(vid.title),
-                url: resolveAssetUrl(playbackUrl),
-                thumbnailUrl: isThumbnailValid(vid.thumbnailUrl) ? resolveAssetUrl(vid.thumbnailUrl!) : (getBunnyThumbnailUrl(playbackUrl) || undefined),
+                url: resolvedUrl,
+                rawPlaybackUrl: playbackUrl,
+                thumbnailUrl: derivedThumbnail,
                 durationSeconds: vid.durationSeconds,
                 processingStatus: vid.processingStatus,
                 uploadedBy: vid.uploadedBy ? { name: vid.uploadedBy.name, email: vid.uploadedBy.email } : undefined,
@@ -349,13 +362,20 @@ export default function MediaPage() {
               ? rawThumbnailUrl
               : (newPlaybackUrl ? getBunnyThumbnailUrl(newPlaybackUrl) : null);
 
+            // IMPORTANT: Do NOT pass playbackUrl through resolveAssetUrl — it rewrites
+            // Bunny /play/ URLs into /thumbnail.jpg CDN URLs, breaking the video player.
+            const resolvedNewUrl = newPlaybackUrl
+              ? (newPlaybackUrl.startsWith("http") ? newPlaybackUrl : resolveAssetUrl(newPlaybackUrl))
+              : undefined;
+
             setMediaFiles((prev) =>
               prev.map((f) => {
                 if (f.id === item.id) {
                   return {
                     ...f,
                     processingStatus: status,
-                    url: newPlaybackUrl ? resolveAssetUrl(newPlaybackUrl) : f.url,
+                    url: resolvedNewUrl || f.url,
+                    rawPlaybackUrl: newPlaybackUrl || f.rawPlaybackUrl,
                     thumbnailUrl: newThumbnailUrl ? resolveAssetUrl(newThumbnailUrl) : f.thumbnailUrl
                   };
                 }
@@ -780,17 +800,28 @@ export default function MediaPage() {
                       <p className="text-xs text-zinc-400">The video failed to transcode. Please try re-uploading.</p>
                     </div>
                   </div>
-                ) : detailFile.url && (detailFile.url.includes("iframe.mediadelivery.net") || detailFile.url.includes("embed")) ? (
-                  <iframe
-                    src={detailFile.url}
-                    loading="lazy"
-                    className="w-full h-full border-0 relative z-10"
-                    allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
-                    allowFullScreen
-                  />
-                ) : (
-                  <video src={detailFile.url || undefined} controls className="w-full h-full object-contain relative z-10" />
-                )
+                ) : (() => {
+                  // Use rawPlaybackUrl for player-type detection (url may be rewritten by resolveAssetUrl).
+                  // Bunny.net embed URLs use iframe; direct CDN/MP4 URLs use native <video>.
+                  const isBunnyEmbed = !!(detailFile.rawPlaybackUrl || detailFile.url || "").match(
+                    /iframe\.mediadelivery\.net\/(embed|play)\//
+                  );
+                  // Prefer the raw Bunny embed URL for iframe src so the player loads correctly
+                  const iframeSrc = detailFile.rawPlaybackUrl?.includes("iframe.mediadelivery.net")
+                    ? detailFile.rawPlaybackUrl
+                    : detailFile.url;
+                  return isBunnyEmbed ? (
+                    <iframe
+                      src={iframeSrc}
+                      loading="lazy"
+                      className="w-full h-full border-0 relative z-10"
+                      allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <video src={detailFile.url || undefined} controls className="w-full h-full object-contain relative z-10" />
+                  );
+                })()
               ) : detailFile.url ? (
                 <img src={detailFile.url} alt={detailFile.name} className="w-full h-full object-cover relative z-10" />
               ) : (

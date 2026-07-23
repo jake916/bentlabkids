@@ -61,6 +61,25 @@ export default function LoginPage() {
       if (response?.data?.session?.id) {
         localStorage.setItem("session_token", response.data.session.id);
       }
+      localStorage.setItem("user_email", response?.data?.user?.email || email);
+      if (response?.data?.user?.name) {
+        localStorage.setItem("user_name", response.data.user.name);
+      }
+      const userObj = response?.data?.user;
+      const rawRole = userObj?.adminType || (userObj as any)?.admin_type || userObj?.role;
+      if (rawRole) {
+        const upper = String(rawRole).trim().toUpperCase().replace(/\s+/g, "_").replace(/-/g, "_");
+        const aliases: Record<string, string> = {
+          SUPERADMIN: "SUPER_ADMIN",
+          CONTENTADMIN: "CONTENT_ADMIN",
+          PRODUCTADMIN: "PRODUCT_ADMIN",
+          SUPER: "SUPER_ADMIN",
+          CONTENT: "CONTENT_ADMIN",
+          PRODUCT: "PRODUCT_ADMIN",
+        };
+        const resolved = aliases[upper] ?? upper;
+        localStorage.setItem("user_admin_type", resolved);
+      }
       showToast("Welcome back, administrator!", "success");
       // Go straight to dashboard
       router.push("/dashboard");

@@ -40,6 +40,15 @@ function ResetPasswordContent() {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
+  const hasMinLength = newPassword.length >= 8;
+  const hasUppercase = /[A-Z]/.test(newPassword);
+  const hasLowercase = /[a-z]/.test(newPassword);
+  const hasNumber = /[0-9]/.test(newPassword);
+  const hasSpecial = /[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(newPassword);
+
+  const isPasswordValid =
+    hasMinLength && hasUppercase && hasLowercase && hasNumber && hasSpecial;
+
   const handleResetSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
@@ -48,8 +57,8 @@ function ResetPasswordContent() {
       setError("Please fill out both password fields");
       return;
     }
-    if (newPassword.length < 8) {
-      setError("Password must be at least 8 characters long");
+    if (!isPasswordValid) {
+      setError("Password must be at least 8 characters long and contain uppercase, lowercase, number, and special character.");
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -156,6 +165,35 @@ function ResetPasswordContent() {
                   {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
+
+              {/* Password Requirements Checklist */}
+              {newPassword.length > 0 && (
+                <div className="text-left bg-zinc-50 p-3.5 rounded-xl border border-zinc-200 text-xs space-y-1.5 font-medium animate-fade-in">
+                  <p className="font-bold text-zinc-700 mb-1">Password Requirements:</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                    <div className={`flex items-center gap-1.5 ${hasMinLength ? "text-emerald-600 font-bold" : "text-zinc-400"}`}>
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${hasMinLength ? "text-emerald-500" : "opacity-30"}`} />
+                      <span>At least 8 characters</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasUppercase ? "text-emerald-600 font-bold" : "text-zinc-400"}`}>
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${hasUppercase ? "text-emerald-500" : "opacity-30"}`} />
+                      <span>Uppercase letter (A-Z)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasLowercase ? "text-emerald-600 font-bold" : "text-zinc-400"}`}>
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${hasLowercase ? "text-emerald-500" : "opacity-30"}`} />
+                      <span>Lowercase letter (a-z)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasNumber ? "text-emerald-600 font-bold" : "text-zinc-400"}`}>
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${hasNumber ? "text-emerald-500" : "opacity-30"}`} />
+                      <span>Number (0-9)</span>
+                    </div>
+                    <div className={`flex items-center gap-1.5 ${hasSpecial ? "text-emerald-600 font-bold" : "text-zinc-400"}`}>
+                      <CheckCircle2 className={`w-3.5 h-3.5 ${hasSpecial ? "text-emerald-500" : "opacity-30"}`} />
+                      <span>Special char (!@#$%)</span>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               <button
                 type="submit"

@@ -15,8 +15,10 @@ import {
   Plus,
   Play,
 } from "lucide-react";
-import { getCurrentUser, getAdminStats, AdminStatsResponse, getStories } from "@/lib/api";
+import { getAdminStats, AdminStatsResponse, getStories } from "@/lib/api";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
+import { useAuth } from "@/lib/auth-context";
+import { Permission } from "@/lib/permissions";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -53,13 +55,23 @@ interface Order {
 
 // ─── Static Data ─────────────────────────────────────────────────────────────
 
-const QUICK_ACTIONS = [
+interface QuickAction {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  iconBg: string;
+  iconColor: string;
+  permissions: Permission[];
+}
+
+const QUICK_ACTIONS: QuickAction[] = [
   {
     label: "New Story",
     href: "/bible-stories/new",
     icon: BookOpen,
     iconBg: "bg-rose-50",
     iconColor: "text-rose-500",
+    permissions: ["MANAGE_CONTENT"],
   },
   {
     label: "Add Prayer",
@@ -67,6 +79,7 @@ const QUICK_ACTIONS = [
     icon: HandHeart,
     iconBg: "bg-blue-50",
     iconColor: "text-blue-500",
+    permissions: ["MANAGE_CONTENT"],
   },
   {
     label: "Upload Video",
@@ -74,6 +87,7 @@ const QUICK_ACTIONS = [
     icon: Play,
     iconBg: "bg-emerald-50",
     iconColor: "text-emerald-500",
+    permissions: ["MANAGE_CONTENT"],
   },
   {
     label: "Add Product",
@@ -81,6 +95,7 @@ const QUICK_ACTIONS = [
     icon: ShoppingBag,
     iconBg: "bg-amber-50",
     iconColor: "text-amber-500",
+    permissions: ["MANAGE_PRODUCTS"],
   },
 ];
 
@@ -171,26 +186,22 @@ function orderStatusStyle(status: OrderStatus) {
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const [userName, setUserName] = useState<string>("Curator");
+  const { user, can } = useAuth();
+  const userName = (() => {
+    if (user?.name && user.name.trim()) {
+      return user.name.split(" ")[0];
+    }
+    if (user?.email) {
+      return user.email.split("@")[0];
+    }
+    return "Admin";
+  })();
   const [statsData, setStatsData] = useState<AdminStatsResponse | null>(null);
   const [recentStories, setRecentStories] = useState<Story[]>([]);
   const [loadingStories, setLoadingStories] = useState<boolean>(true);
   const [loadingStats, setLoadingStats] = useState<boolean>(true);
-  const [loadingUser, setLoadingUser] = useState<boolean>(true);
 
   useEffect(() => {
-    getCurrentUser()
-      .then((res) => {
-        const name = res?.data?.user?.name;
-        if (name) setUserName(name.split(" ")[0]); // use first name only
-      })
-      .catch(() => {
-        // silently fall back to default
-      })
-      .finally(() => {
-        setLoadingUser(false);
-      });
-
     getAdminStats()
       .then((res) => {
         if (res && res.bibleStories) {
@@ -243,19 +254,21 @@ export default function DashboardPage() {
       });
   }, []);
 
-  const isReady = !loadingUser && !loadingStats && !loadingStories;
+  const isReady = !loadingStats && !loadingStories;
 
   if (!isReady) {
     return <DashboardSkeleton />;
   }
 
-  const statsList = [
+  // Filter stat cards and quick actions by role
+  const allStats = [
     {
       label: "Bible Stories",
       value: statsData?.bibleStories?.count ?? 0,
       icon: BookOpen,
       iconBg: "bg-rose-50",
       iconColor: "text-rose-500",
+      permissions: ["MANAGE_CONTENT"] as Permission[],
     },
     {
       label: "Prayers",
@@ -263,6 +276,7 @@ export default function DashboardPage() {
       icon: HandHeart,
       iconBg: "bg-blue-50",
       iconColor: "text-blue-500",
+      permissions: ["MANAGE_CONTENT"] as Permission[],
     },
     {
       label: "Videos",
@@ -270,6 +284,7 @@ export default function DashboardPage() {
       icon: Play,
       iconBg: "bg-emerald-50",
       iconColor: "text-emerald-500",
+      permissions: ["MANAGE_CONTENT"] as Permission[],
     },
     {
       label: "App Users",
@@ -277,8 +292,13 @@ export default function DashboardPage() {
       icon: CircleUserRound,
       iconBg: "bg-pink-50",
       iconColor: "text-pink-500",
+      permissions: ["MANAGE_USERS", "MANAGE_SYSTEM"] as Permission[],
     },
   ];
+
+  const statsList = allStats.filter((s) => can(s.permissions));
+  const visibleActions = QUICK_ACTIONS.filter((a) => can(a.permissions));
+
   return (
     <div className="min-h-full p-8 space-y-8 font-sans">
 
@@ -343,26 +363,28 @@ export default function DashboardPage() {
       </section>
 
       {/* ── Quick Actions ── */}
-      <section>
-        <h2 className="text-base font-bold text-zinc-800 mb-4">Quick Actions</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {QUICK_ACTIONS.map((action) => {
-            const Icon = action.icon;
-            return (
-              <Link
-                key={action.label}
-                href={action.href}
-                className="bg-white rounded-2xl p-6 flex flex-col items-center gap-4 border border-zinc-100 shadow-sm hover:shadow-md hover:border-[#B31046]/20 active:scale-[0.98] transition-all group"
-              >
-                <div className={`w-14 h-14 rounded-2xl ${action.iconBg} flex items-center justify-center group-hover:scale-110 transition-transform`}>
-                  <Icon className={`w-7 h-7 ${action.iconColor}`} />
-                </div>
-                <span className="text-sm font-semibold text-zinc-700">{action.label}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
+      {visibleActions.length > 0 && (
+        <section>
+          <h2 className="text-base font-bold text-zinc-800 mb-4">Quick Actions</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {visibleActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={action.label}
+                  href={action.href}
+                  className="bg-white rounded-2xl p-6 flex flex-col items-center gap-4 border border-zinc-100 shadow-sm hover:shadow-md hover:border-[#B31046]/20 active:scale-[0.98] transition-all group"
+                >
+                  <div className={`w-14 h-14 rounded-2xl ${action.iconBg} flex items-center justify-center group-hover:scale-110 transition-transform`}>
+                    <Icon className={`w-7 h-7 ${action.iconColor}`} />
+                  </div>
+                  <span className="text-sm font-semibold text-zinc-700">{action.label}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── Bottom Row ── */}
       <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-8">

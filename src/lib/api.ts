@@ -9,9 +9,17 @@ export const LIBRARY_CDN_MAP: Record<string, string> = {
 export function resolveAssetUrl(url: string | undefined | null): string {
   if (!url) return "/logogo.png";
 
-  // Rewrite legacy/broken Bunny play thumbnail URLs to b-cdn.net CDN URLs
+  // ⚠️  WARNING: Do NOT pass a video's playbackUrl through this function.
+  // This function is intended for IMAGE / THUMBNAIL URLs only.
+  //
+  // Legacy rewrite: if the backend stored a Bunny /play/ URL as a thumbnailUrl,
+  // convert it to the correct b-cdn.net/videoId/thumbnail.jpg format.
+  // NOTE: Bunny /embed/ URLs are valid video player sources — never rewrite them.
   let cleanUrl = url;
-  if (url.includes("iframe.mediadelivery.net/play/")) {
+  if (
+    url.includes("iframe.mediadelivery.net/play/") &&
+    !url.includes("/embed/")
+  ) {
     const withoutQueryParams = url.split("?")[0].split("#")[0];
     const parts = withoutQueryParams.split("/").filter(Boolean);
     const playIndex = parts.indexOf("play");
@@ -114,11 +122,21 @@ async function apiFetch<T>(
     const body = await res.json().catch(() => ({}));
 
     if (!res.ok) {
-      // Error shape: { success: false, message: string, statusCode: number, errors: ... }
-      const message =
+      let message =
         body?.message ||
         body?.error ||
         `Request failed with status ${res.status}`;
+
+      if (Array.isArray(body?.errors) && body.errors.length > 0) {
+        const details = body.errors
+          .map((e: any) => (typeof e === "string" ? e : e?.message))
+          .filter(Boolean);
+        if (details.length > 0) {
+          message = details.join(". ");
+        }
+      } else if (Array.isArray(message)) {
+        message = (message as string[]).join(". ");
+      }
 
       if (res.status === 401 && typeof window !== "undefined") {
         const pathname = window.location.pathname;
@@ -126,6 +144,7 @@ async function apiFetch<T>(
           pathname !== "/login" &&
           pathname !== "/forgot-password" &&
           pathname !== "/reset-password" &&
+          pathname !== "/setup-account" &&
           pathname !== "/"
         ) {
           window.location.href = "/login";
@@ -137,21 +156,11 @@ async function apiFetch<T>(
 
     return body as T;
   } catch (err: any) {
-    // If the fetch itself failed (e.g. network error / timeout)
-    if (retryCount < 2 && typeof window !== "undefined") {
-      const wakeUrl = process.env.NEXT_PUBLIC_API_URL;
-      if (wakeUrl) {
-        console.log("[API] Network error. Attempting to wake up backend...");
-        try {
-          await fetch(wakeUrl, { mode: "no-cors" });
-          await new Promise((resolve) => setTimeout(resolve, 2000));
-          return apiFetch<T>(path, options, retryCount + 1);
-        } catch (wakeErr) {
-          console.warn("[API] Wake up ping failed:", wakeErr);
-        }
-      }
-    }
-    throw err;
+    if (err.message && err.status) throw err;
+    throw {
+      message: err.message || "Network error. Please try again.",
+      status: 0,
+    } as ApiError;
   }
 }
 
@@ -164,6 +173,8 @@ export interface User {
   emailVerified: boolean;
   image: string | null;
   role: string;
+  /** Admin-specific role — may or may not be present in the /me response depending on backend version. */
+  adminType?: "SUPER_ADMIN" | "ADMIN" | "CONTENT_ADMIN" | "PRODUCT_ADMIN" | null;
   status: string;
   createdAt: string;
   updatedAt: string;
@@ -226,7 +237,8 @@ export async function forgotPassword(
 
 export interface ResetPasswordPayload {
   token: string;
-  password: string;
+  password?: string;
+  newPassword?: string;
 }
 
 export interface ResetPasswordResponse {
@@ -237,9 +249,10 @@ export interface ResetPasswordResponse {
 export async function resetPassword(
   payload: ResetPasswordPayload
 ): Promise<ResetPasswordResponse> {
+  const newPassword = payload.newPassword || payload.password || "";
   return apiFetch<ResetPasswordResponse>("/api/v1/reset-password", {
     method: "POST",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({ token: payload.token, newPassword }),
   });
 }
 
@@ -248,6 +261,9 @@ export async function resetPassword(
 export async function signOut(): Promise<{ success: boolean }> {
   if (typeof window !== "undefined") {
     localStorage.removeItem("session_token");
+    localStorage.removeItem("user_email");
+    localStorage.removeItem("user_name");
+    localStorage.removeItem("user_admin_type");
   }
   return apiFetch<{ success: boolean }>("/api/v1/sign-out", {
     method: "POST",
