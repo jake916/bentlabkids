@@ -14,6 +14,7 @@ import {
   CircleUserRound,
   Plus,
   Play,
+  Tv,
 } from "lucide-react";
 import { getAdminStats, AdminStatsResponse, getStories } from "@/lib/api";
 import DashboardSkeleton from "@/components/DashboardSkeleton";
@@ -95,6 +96,14 @@ const QUICK_ACTIONS: QuickAction[] = [
     icon: ShoppingBag,
     iconBg: "bg-amber-50",
     iconColor: "text-amber-500",
+    permissions: ["MANAGE_PRODUCTS"],
+  },
+  {
+    label: "Upload Media",
+    href: "/media",
+    icon: Tv,
+    iconBg: "bg-purple-50",
+    iconColor: "text-purple-500",
     permissions: ["MANAGE_PRODUCTS"],
   },
 ];
@@ -287,6 +296,22 @@ export default function DashboardPage() {
       permissions: ["MANAGE_CONTENT"] as Permission[],
     },
     {
+      label: "Products",
+      value: (statsData as any)?.products?.count ?? 12,
+      icon: ShoppingBag,
+      iconBg: "bg-amber-50",
+      iconColor: "text-amber-500",
+      permissions: ["MANAGE_PRODUCTS"] as Permission[],
+    },
+    {
+      label: "Orders",
+      value: RECENT_ORDERS.length,
+      icon: Package,
+      iconBg: "bg-purple-50",
+      iconColor: "text-purple-500",
+      permissions: ["MANAGE_PRODUCTS"] as Permission[],
+    },
+    {
       label: "App Users",
       value: statsData?.users?.count ?? 0,
       icon: CircleUserRound,
@@ -387,85 +412,89 @@ export default function DashboardPage() {
       )}
 
       {/* ── Bottom Row ── */}
-      <section className="grid grid-cols-1 xl:grid-cols-2 gap-6 pb-8">
+      <section className={`grid grid-cols-1 ${can(["MANAGE_CONTENT"]) && can(["MANAGE_PRODUCTS"]) ? "xl:grid-cols-2" : "grid-cols-1"} gap-6 pb-8`}>
 
-        {/* Recent Bible Stories */}
-        <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-50">
-            <h2 className="text-base font-bold text-zinc-800">Recent Bible Stories</h2>
-            <Link
-              href="/bible-stories"
-              className="text-sm font-semibold text-[#B31046] hover:underline"
-            >
-              View All
-            </Link>
+        {/* Recent Bible Stories (Only for content managers) */}
+        {can(["MANAGE_CONTENT"]) && (
+          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-50">
+              <h2 className="text-base font-bold text-zinc-800">Recent Bible Stories</h2>
+              <Link
+                href="/bible-stories"
+                className="text-sm font-semibold text-[#B31046] hover:underline"
+              >
+                View All
+              </Link>
+            </div>
+
+            <ul className="divide-y divide-zinc-50">
+              {loadingStories ? (
+                <li className="px-6 py-8 text-center text-sm text-zinc-400">
+                  Loading recent stories...
+                </li>
+              ) : recentStories.length === 0 ? (
+                <li className="px-6 py-8 text-center text-sm text-zinc-400">
+                  No recent stories found.
+                </li>
+              ) : (
+                recentStories.map((story) => (
+                  <li key={story.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50 transition-colors">
+                    {/* Thumbnail */}
+                    <div className={`w-10 h-10 rounded-full ${story.avatarBg} flex items-center justify-center shrink-0 text-white font-bold text-sm`}>
+                      {story.initials}
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold text-zinc-800 truncate">{story.title}</p>
+                      <p className="text-xs text-zinc-400">{story.ageRange} · {story.book}</p>
+                    </div>
+
+                    {/* Badge */}
+                    <span className={`text-xs font-semibold px-3 py-1 rounded-full shrink-0 ${storyStatusStyle(story.status)}`}>
+                      {story.status}
+                    </span>
+                  </li>
+                ))
+              )}
+            </ul>
           </div>
+        )}
 
-          <ul className="divide-y divide-zinc-50">
-            {loadingStories ? (
-              <li className="px-6 py-8 text-center text-sm text-zinc-400">
-                Loading recent stories...
-              </li>
-            ) : recentStories.length === 0 ? (
-              <li className="px-6 py-8 text-center text-sm text-zinc-400">
-                No recent stories found.
-              </li>
-            ) : (
-              recentStories.map((story) => (
-                <li key={story.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50 transition-colors">
-                  {/* Thumbnail */}
-                  <div className={`w-10 h-10 rounded-full ${story.avatarBg} flex items-center justify-center shrink-0 text-white font-bold text-sm`}>
-                    {story.initials}
-                  </div>
+        {/* Recent Orders (Only for product/order managers) */}
+        {can(["MANAGE_PRODUCTS"]) && (
+          <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-50">
+              <h2 className="text-base font-bold text-zinc-800">Recent Orders</h2>
+              <Link
+                href="/orders"
+                className="text-sm font-semibold text-[#B31046] hover:underline"
+              >
+                View All
+              </Link>
+            </div>
+
+            <ul className="divide-y divide-zinc-50">
+              {RECENT_ORDERS.map((order) => (
+                <li key={order.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50 transition-colors">
+                  {/* Order ID */}
+                  <span className="text-xs font-bold text-[#B31046] shrink-0">#{order.id}</span>
 
                   {/* Info */}
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-zinc-800 truncate">{story.title}</p>
-                    <p className="text-xs text-zinc-400">{story.ageRange} · {story.book}</p>
+                    <p className="text-sm font-semibold text-zinc-800">{order.customer}</p>
+                    <p className="text-xs text-zinc-400 truncate">{order.product}</p>
                   </div>
 
                   {/* Badge */}
-                  <span className={`text-xs font-semibold px-3 py-1 rounded-full shrink-0 ${storyStatusStyle(story.status)}`}>
-                    {story.status}
+                  <span className={`text-xs font-semibold px-3 py-1 rounded-full shrink-0 ${orderStatusStyle(order.status)}`}>
+                    {order.status}
                   </span>
                 </li>
-              ))
-            )}
-          </ul>
-        </div>
-
-        {/* Recent Orders */}
-        <div className="bg-white rounded-2xl border border-zinc-100 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-50">
-            <h2 className="text-base font-bold text-zinc-800">Recent Orders</h2>
-            <Link
-              href="/orders"
-              className="text-sm font-semibold text-[#B31046] hover:underline"
-            >
-              View All
-            </Link>
+              ))}
+            </ul>
           </div>
-
-          <ul className="divide-y divide-zinc-50">
-            {RECENT_ORDERS.map((order) => (
-              <li key={order.id} className="flex items-center gap-4 px-6 py-4 hover:bg-zinc-50 transition-colors">
-                {/* Order ID */}
-                <span className="text-xs font-bold text-[#B31046] shrink-0">#{order.id}</span>
-
-                {/* Info */}
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-zinc-800">{order.customer}</p>
-                  <p className="text-xs text-zinc-400 truncate">{order.product}</p>
-                </div>
-
-                {/* Badge */}
-                <span className={`text-xs font-semibold px-3 py-1 rounded-full shrink-0 ${orderStatusStyle(order.status)}`}>
-                  {order.status}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </div>
+        )}
 
       </section>
     </div>

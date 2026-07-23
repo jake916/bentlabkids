@@ -5,6 +5,7 @@ export interface AdminUser {
   role: "Super Admin" | "Admin" | "Content Admin" | "Product Admin";
   accessScope: string;
   status: "Active" | "Disabled";
+  verified?: boolean;
   lastLogin: string;
   avatarColorBg: string;
   avatarColorText: string;

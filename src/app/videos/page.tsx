@@ -782,7 +782,7 @@ export default function VideosPage() {
                       <iframe
                         src={resolvedUrl}
                         loading="lazy"
-                        referrerPolicy="origin"
+                        referrerPolicy="no-referrer-when-downgrade"
                         allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture"
                         allowFullScreen
                         className="w-full h-full border-0"

@@ -805,7 +805,7 @@ export default function MediaPage() {
                     <iframe
                       src={resolvedUrl}
                       loading="lazy"
-                      referrerPolicy="origin"
+                      referrerPolicy="no-referrer-when-downgrade"
                       className="w-full h-full border-0 relative z-10"
                       allow="accelerometer; gyroscope; autoplay; encrypted-media; picture-in-picture;"
                       allowFullScreen

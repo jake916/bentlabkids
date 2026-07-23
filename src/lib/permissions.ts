@@ -48,7 +48,7 @@ export const ROUTE_PERMISSIONS: Record<string, Permission[]> = {
   "/settings":           ["MANAGE_SYSTEM"],
   "/admin-management":   ["MANAGE_ADMINS"],
   "/app-users":          ["MANAGE_USERS", "MANAGE_SYSTEM"],
-  "/support":            ["MANAGE_SYSTEM", "MANAGE_ADMINS"],
+  "/support":            ["MANAGE_SYSTEM", "MANAGE_ADMINS", "MANAGE_PRODUCTS"],
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

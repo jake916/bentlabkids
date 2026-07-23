@@ -76,7 +76,7 @@ const NAV_SECTIONS: NavSection[] = [
       { label: "Settings",          href: "/settings",          icon: Settings,    permissions: ["MANAGE_SYSTEM"] },
       { label: "Admin Management",  href: "/admin-management",  icon: ShieldCheck, permissions: ["MANAGE_ADMINS"] },
       { label: "App Users",         href: "/app-users",         icon: UserCog,     permissions: ["MANAGE_USERS", "MANAGE_SYSTEM"] },
-      { label: "Support",           href: "/support",           icon: Headphones,  permissions: ["MANAGE_SYSTEM", "MANAGE_ADMINS"] },
+      { label: "Support",           href: "/support",           icon: Headphones,  permissions: ["MANAGE_SYSTEM", "MANAGE_ADMINS", "MANAGE_PRODUCTS"] },
     ],
   },
 ];

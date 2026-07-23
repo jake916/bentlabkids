@@ -115,6 +115,7 @@ const getRoleMeta = (roleName: string) => {
 };
 
 function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
+  const isPending = user.status === "PENDING_INVITATION" || !user.emailVerified;
   const status: "Active" | "Disabled" = (user.status === "ACTIVE" || user.status === "PENDING_INVITATION") ? "Active" : "Disabled";
 
   const matchedRole = getRoleFromType(user.adminType);
@@ -130,7 +131,11 @@ function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
     accessScope = "Global / Full Control";
   }
 
-  const name = user.name || "Pending Invite";
+  // Extract name from email if user name is missing or "Pending Invite"
+  let name = user.name;
+  if (!name || name === "Pending Invite") {
+    name = user.email ? user.email.split("@")[0] : "Admin User";
+  }
 
   const initials = name
     .trim()
@@ -161,7 +166,8 @@ function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
     role: (matchedRole.name || "Admin") as any,
     accessScope,
     status,
-    lastLogin: user.status === "PENDING_INVITATION" ? "Pending invitation" : (user.emailVerified ? "Active session" : "Never logged in"),
+    verified: !isPending,
+    lastLogin: isPending ? "Pending invitation" : (user.emailVerified ? "Active session" : "Never logged in"),
     avatarColorBg: pickedColor.bg,
     avatarColorText: pickedColor.text,
     avatarInitials: initials,
@@ -559,9 +565,16 @@ export default function AdminManagementPage() {
                           {admin.avatarInitials}
                         </div>
                         <div className="flex flex-col min-w-0">
-                          <span className="text-sm font-extrabold text-zinc-800 group-hover:text-[#B31046] transition-colors truncate">
-                            {admin.name}
-                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-extrabold text-zinc-800 group-hover:text-[#B31046] transition-colors truncate">
+                              {admin.name}
+                            </span>
+                            {admin.verified === false && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-black tracking-wider uppercase bg-amber-50 text-amber-600 border border-amber-200/80 shrink-0">
+                                Not Verified
+                              </span>
+                            )}
+                          </div>
                           <span className="text-xs text-zinc-400 truncate">
                             {admin.email}
                           </span>
@@ -583,17 +596,24 @@ export default function AdminManagementPage() {
 
                     {/* Status Dot */}
                     <td className="px-6 py-4 whitespace-nowrap">
-                      {admin.status === "Active" ? (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                          <span>Active</span>
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400">
-                          <span className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
-                          <span>Disabled</span>
-                        </span>
-                      )}
+                      <div className="flex flex-col gap-1 items-start">
+                        {admin.status === "Active" ? (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                            <span>Active</span>
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400">
+                            <span className="w-1.5 h-1.5 rounded-full bg-zinc-300" />
+                            <span>Disabled</span>
+                          </span>
+                        )}
+                        {admin.verified === false && (
+                          <span className="inline-flex items-center gap-1 text-[9px] font-extrabold text-amber-600 bg-amber-50 border border-amber-200/60 px-2 py-0.5 rounded-full">
+                            Not Verified
+                          </span>
+                        )}
+                      </div>
                     </td>
 
                     {/* Last Login */}
