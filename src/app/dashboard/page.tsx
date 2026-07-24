@@ -391,7 +391,7 @@ export default function DashboardPage() {
       {visibleActions.length > 0 && (
         <section>
           <h2 className="text-base font-bold text-zinc-800 mb-4">Quick Actions</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className={`grid grid-cols-2 sm:grid-cols-3 ${visibleActions.length >= 5 ? "lg:grid-cols-5" : visibleActions.length === 4 ? "lg:grid-cols-4" : "lg:grid-cols-3"} gap-4`}>
             {visibleActions.map((action) => {
               const Icon = action.icon;
               return (

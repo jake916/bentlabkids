@@ -115,7 +115,7 @@ const getRoleMeta = (roleName: string) => {
 };
 
 function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
-  const isPending = user.status === "PENDING_INVITATION" || !user.emailVerified;
+  const isPending = user.status === "PENDING_INVITATION";
   const status: "Active" | "Disabled" = (user.status === "ACTIVE" || user.status === "PENDING_INVITATION") ? "Active" : "Disabled";
 
   const matchedRole = getRoleFromType(user.adminType);
@@ -167,7 +167,7 @@ function mapBackendUserToAdmin(user: BackendAdminUser): AdminUser {
     accessScope,
     status,
     verified: !isPending,
-    lastLogin: isPending ? "Pending invitation" : (user.emailVerified ? "Active session" : "Never logged in"),
+    lastLogin: isPending ? "Pending invitation" : (user.emailVerified ? "Active session" : "Account activated"),
     avatarColorBg: pickedColor.bg,
     avatarColorText: pickedColor.text,
     avatarInitials: initials,
@@ -184,7 +184,7 @@ export default function AdminManagementPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("All");
   const [page, setPage] = useState(1);
-  const itemsPerPage = 4; // Matching mockup rows count
+  const itemsPerPage = 10;
 
   // Modal State
   const [showAddModal, setShowAddModal] = useState(false);
@@ -248,19 +248,40 @@ export default function AdminManagementPage() {
 
   const handleDeleteAdmin = async () => {
     if (!selectedAdminForAction) return;
+    const target = selectedAdminForAction;
+    setShowDeleteModal(false);
+    setSelectedAdminForAction(null);
+
+    // If it's a mock or local optimistic ID (e.g., INV- or ADM-)
+    if (target.id.startsWith("INV-") || target.id.startsWith("ADM-")) {
+      setAdmins((prev) =>
+        prev.filter((a) => a.id !== target.id && a.email.toLowerCase() !== target.email.toLowerCase())
+      );
+      addToast("success", `Removed ${target.name} from list.`);
+      return;
+    }
+
     try {
-      const res = await deleteAdmin(selectedAdminForAction.id);
-      if (res && res.success) {
-        addToast("success", `Successfully deleted admin account for ${selectedAdminForAction.name}`);
-        setShowDeleteModal(false);
-        setSelectedAdminForAction(null);
+      const res = await deleteAdmin(target.id);
+      if (res && (res.success || res.message)) {
+        setAdmins((prev) =>
+          prev.filter((a) => a.id !== target.id && a.email.toLowerCase() !== target.email.toLowerCase())
+        );
+        addToast("success", `Successfully deleted admin account for ${target.name}`);
         await fetchAdminsAndRoles();
       } else {
+        await fetchAdminsAndRoles();
         addToast("error", "Failed to delete administrator");
       }
     } catch (err: any) {
-      console.error("Failed to delete admin:", err);
-      addToast("error", err?.message || "Failed to delete admin");
+      console.warn("Backend delete admin error:", err);
+      await fetchAdminsAndRoles();
+      const rawMsg = err?.message || "";
+      if (rawMsg.toLowerCase().includes("database") || rawMsg.toLowerCase().includes("foreign") || rawMsg.toLowerCase().includes("constraint")) {
+        addToast("error", `Cannot delete ${target.name} because this account has associated content or audit records in the database. Please keep the account Disabled instead.`);
+      } else {
+        addToast("error", rawMsg || "Failed to delete administrator from database.");
+      }
     }
   };
 
@@ -280,10 +301,17 @@ export default function AdminManagementPage() {
     try {
       setRoles(STATIC_ROLES);
 
-      const adminsRes = await getAdmins();
-      if (adminsRes && adminsRes.success && adminsRes.data) {
+      const adminsRes = await getAdmins({ limit: 100 });
+      if (adminsRes && adminsRes.success && Array.isArray(adminsRes.data)) {
         const mapped = adminsRes.data.map(mapBackendUserToAdmin);
-        setAdmins(mapped);
+        setAdmins((prev) => {
+          const existingIds = new Set(mapped.map((m) => m.id));
+          const existingEmails = new Set(mapped.map((m) => m.email.toLowerCase()));
+          const pendingLocals = prev.filter(
+            (p) => !existingIds.has(p.id) && !existingEmails.has(p.email.toLowerCase())
+          );
+          return [...pendingLocals, ...mapped];
+        });
       }
     } catch (e) {
       console.error("Failed to refresh admin data:", e);
@@ -372,14 +400,41 @@ export default function AdminManagementPage() {
       return;
     }
 
+    const email = formEmail.trim().toLowerCase();
+    const roleId = formRoleId;
+
     try {
       const res = await inviteAdmin({
-        email: formEmail.trim(),
-        adminType: formRoleId as any
+        email,
+        adminType: roleId as any
       });
-      if (res && res.success) {
-        addToast("success", `Successfully invited admin ${formEmail}`);
+
+      if (res && (res.success || res.data)) {
+        addToast("success", `Successfully invited admin ${email}`);
         setShowAddModal(false);
+
+        // Optimistically create new admin entry at top of table
+        const backendUser: BackendAdminUser = res.data?.id ? res.data : {
+          id: `INV-${Date.now()}`,
+          name: email.split("@")[0],
+          email: email,
+          emailVerified: false,
+          image: null,
+          status: "PENDING_INVITATION",
+          adminType: roleId as any,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+
+        const newAdmin = mapBackendUserToAdmin(backendUser);
+
+        // Prepend to top & reset pagination filters
+        setAdmins((prev) => [newAdmin, ...prev.filter((a) => a.email.toLowerCase() !== email)]);
+        setSearchTerm("");
+        setRoleFilter("All");
+        setPage(1);
+
+        // Refresh from backend server
         await fetchAdminsAndRoles();
       } else {
         addToast("error", "Failed to invite administrator");
