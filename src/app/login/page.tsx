@@ -81,14 +81,20 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const response = await signIn({ email, password });
-      if (response?.data?.session?.id) {
-        localStorage.setItem("session_token", response.data.session.id);
+      const token =
+        response?.data?.session?.id ||
+        (response?.data as any)?.token ||
+        (response as any)?.token ||
+        (response as any)?.session?.id;
+
+      if (token) {
+        localStorage.setItem("session_token", token);
       }
       localStorage.setItem("user_email", response?.data?.user?.email || email);
       if (response?.data?.user?.name) {
         localStorage.setItem("user_name", response.data.user.name);
       }
-      const userObj = response?.data?.user;
+      const userObj = response?.data?.user || (response as any)?.user;
       const rawRole = userObj?.adminType || (userObj as any)?.admin_type || userObj?.role;
       if (rawRole) {
         const upper = String(rawRole).trim().toUpperCase().replace(/\s+/g, "_").replace(/-/g, "_");
@@ -110,7 +116,13 @@ export default function LoginPage() {
       const apiErr = err as ApiError;
       if (apiErr?.status === 429) {
         setCooldown(60);
-        const message = "Too many login attempts. Please wait 60s for the rate-limit to reset.";
+        const message = "Too many login attempts. Rate limit reached — please wait 60 seconds before trying again.";
+        setError(message);
+        showToast(message, "error");
+      } else if (apiErr?.status === 401) {
+        const message = apiErr?.message && apiErr.message !== "Request failed with status 401"
+          ? apiErr.message
+          : "Invalid email or password. Please verify your credentials and try again.";
         setError(message);
         showToast(message, "error");
       } else {
