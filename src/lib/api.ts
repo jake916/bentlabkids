@@ -1247,5 +1247,52 @@ export async function acceptInvitation(payload: {
   });
 }
 
+// ─── Signed-Up App Users API ───────────────────────────────────────────────────
+
+export interface AppUserBackend {
+  id: string;
+  name: string | null;
+  email: string;
+  image: string | null;
+  phone: string | null;
+  location: string | null;
+  dateJoined: string;
+  lastActive: string | null;
+  totalOrders: number;
+  status: "PENDING_INVITATION" | "ACTIVE" | "SUSPENDED";
+}
+
+export interface ListAppUsersResponse {
+  success: boolean;
+  data: AppUserBackend[];
+  meta: {
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+  };
+}
+
+export async function getAppUsers(params?: {
+  search?: string;
+  status?: string;
+  sort?: "newest" | "oldest" | string;
+  page?: number;
+  limit?: number;
+}): Promise<ListAppUsersResponse> {
+  const query = params
+    ? "?" +
+      new URLSearchParams(
+        Object.fromEntries(
+          Object.entries(params)
+            .filter(([, v]) => v !== undefined && v !== "" && v !== null)
+            .map(([k, v]) => [k, String(v)])
+        )
+      ).toString()
+    : "";
+  return apiFetch<ListAppUsersResponse>(`/api/v1/admin/users${query}`);
+}
+
+
 
 
