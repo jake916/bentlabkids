@@ -17,11 +17,12 @@ import {
   X,
   ArrowLeft,
   FileImage,
+  Star,
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import RichTextEditor from "@/components/RichTextEditor";
 import { STORY_CATEGORIES } from "@/lib/storyCategories";
-import { getUploads, getCategories, createStory, getStoryById, updateStory, publishStory, Category } from "@/lib/api";
+import { getUploads, getCategories, createStory, getStoryById, updateStory, publishStory, Category, createBanner, getBanners } from "@/lib/api";
 import BibleVerseSelector from "@/components/BibleVerseSelector";
 import MediaSelectModal, { MediaFile } from "@/components/MediaSelectModal";
 
@@ -102,6 +103,7 @@ function CreateStoryForm() {
     content: "",
     statusOpt: "immediately" as PublishStatus,
     featuredImageUrl: null as string | null,
+    isFeatured: false,
   });
 
   // State fields
@@ -109,6 +111,7 @@ function CreateStoryForm() {
   const [verseRef, setVerseRef] = useState("");
   const [duration, setDuration] = useState("");
   const [content, setContent] = useState("");
+  const [isFeatured, setIsFeatured] = useState(false);
   const [statusOpt, setStatusOpt] = useState<PublishStatus>("immediately");
   const [publishDate, setPublishDate] = useState(() => {
     const d = new Date();
@@ -135,6 +138,7 @@ function CreateStoryForm() {
     verseRef !== initialValuesRef.current.verseRef ||
     duration !== initialValuesRef.current.duration ||
     content !== initialValuesRef.current.content ||
+    isFeatured !== initialValuesRef.current.isFeatured ||
     statusOpt !== initialValuesRef.current.statusOpt ||
     (featuredImage?.url || null) !== (initialValuesRef.current.featuredImageUrl || null);
 
@@ -175,8 +179,11 @@ function CreateStoryForm() {
   useEffect(() => {
     if (editId) {
       setIsLoadingDetails(true);
-      getStoryById(editId)
-        .then((res) => {
+      Promise.all([
+        getStoryById(editId),
+        getBanners().catch(() => ({ success: false, data: [] })),
+      ])
+        .then(([res, bannersRes]) => {
           if (res.success && res.data) {
             const story = res.data;
             setTitle(story.title);
@@ -209,6 +216,27 @@ function CreateStoryForm() {
               statusVal = "draft";
             }
 
+            let featuredVal = Boolean(
+              (story as any).isFeatured ||
+              (story as any).featured ||
+              (story as any).is_featured ||
+              (story as any).isFeaturedContent ||
+              (story as any).featuredContent
+            );
+
+            if (!featuredVal && bannersRes?.data && Array.isArray(bannersRes.data)) {
+              const hasMatchingBanner = bannersRes.data.some((b: any) =>
+                b.header?.trim().toLowerCase() === (story.title || "").trim().toLowerCase() ||
+                (story.slug && b.buttonLink?.includes(story.slug)) ||
+                (story.id && b.buttonLink?.includes(story.id))
+              );
+              if (hasMatchingBanner) {
+                featuredVal = true;
+              }
+            }
+
+            setIsFeatured(featuredVal);
+
             if (story.featuredImage) {
               setFeaturedImage({
                 id: story.featuredImage,
@@ -228,6 +256,7 @@ function CreateStoryForm() {
               content: story.content || "",
               statusOpt: statusVal,
               featuredImageUrl: story.featuredImage || null,
+              isFeatured: featuredVal,
             };
           }
         })
@@ -291,17 +320,39 @@ function CreateStoryForm() {
         image: featuredImage?.url || undefined,
         tags: [],
         status: "DRAFT" as const,
+        isFeatured,
+        featured: isFeatured,
       };
 
       if (editId) {
         const res = await updateStory(editId, payload);
         if (res.success) {
+          if (isFeatured) {
+            await createBanner({
+              header: (title || "Untitled Story").trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Read Story",
+              buttonLink: `/stories/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
+          }
           addToast("success", "Saved draft successfully!");
           return true;
         }
       } else {
         const res = await createStory(payload);
         if (res.success) {
+          if (isFeatured) {
+            await createBanner({
+              header: (title || "Untitled Story").trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Read Story",
+              buttonLink: `/stories/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
+          }
           addToast("success", "Saved draft successfully!");
           return true;
         }
@@ -358,6 +409,8 @@ function CreateStoryForm() {
         tags: [],
         ...(scheduledFor !== undefined ? { scheduledFor } : {}),
         status,
+        isFeatured,
+        featured: isFeatured,
       };
 
       if (editId) {
@@ -366,6 +419,16 @@ function CreateStoryForm() {
           // If publish immediately, call the publish endpoint explicitly
           if (statusOpt === "immediately") {
             await publishStory(editId).catch(() => {});
+          }
+          if (isFeatured) {
+            await createBanner({
+              header: title.trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Read Story",
+              buttonLink: `/stories/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
           }
           addToast("success", `Story "${title.trim()}" updated successfully!`);
           setTimeout(() => {
@@ -381,6 +444,16 @@ function CreateStoryForm() {
           if (statusOpt === "immediately") {
             await publishStory(res.data.id).catch(() => {});
           }
+          if (isFeatured) {
+            await createBanner({
+              header: title.trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Read Story",
+              buttonLink: `/stories/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
+          }
           addToast("success", `Story "${title.trim()}" created successfully!`);
           setTimeout(() => {
             router.push("/bible-stories");
@@ -390,12 +463,6 @@ function CreateStoryForm() {
         }
       }
     } catch (err: any) {
-      console.error("Failed to submit story. Full error context:", err);
-      console.error("Error name:", err?.name);
-      console.error("Error message:", err?.message);
-      console.error("Error status:", err?.status);
-      console.error("Error stack:", err?.stack);
-      console.error("Error keys:", Object.keys(err || {}));
       try {
         console.error("Error JSON stringified:", JSON.stringify(err));
       } catch (stringifyErr) {
@@ -729,7 +796,53 @@ function CreateStoryForm() {
 
           </div>
 
-          {/* Card 2: Category settings */}
+          {/* Card 2: Featured Content */}
+          <div className="bg-white rounded-3xl p-6 border border-zinc-100 shadow-sm space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-zinc-50">
+              <h3 className="text-sm font-extrabold text-zinc-800 flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                Featured Content
+              </h3>
+              {isFeatured && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-600 border border-amber-200">
+                  <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                  Featured
+                </span>
+              )}
+            </div>
+
+            <label className="flex items-start gap-3.5 p-3.5 rounded-2xl border border-zinc-100 hover:border-amber-200 bg-zinc-50/50 hover:bg-amber-50/20 transition-all cursor-pointer group">
+              <div className="pt-0.5">
+                <input
+                  type="checkbox"
+                  checked={isFeatured}
+                  onChange={(e) => setIsFeatured(e.target.checked)}
+                  className="sr-only"
+                />
+                <div
+                  className={`w-10 h-6 rounded-full transition-colors relative p-1 flex items-center ${
+                    isFeatured ? "bg-[#B31046]" : "bg-zinc-300"
+                  }`}
+                >
+                  <div
+                    className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                      isFeatured ? "translate-x-4" : "translate-x-0"
+                    }`}
+                  />
+                </div>
+              </div>
+              <div className="space-y-1 select-none">
+                <span className="text-xs font-extrabold text-zinc-800 group-hover:text-[#B31046] transition-colors block">
+                  Feature on App Dashboard
+                </span>
+                <p className="text-[11px] font-semibold text-zinc-500 leading-normal">
+                  When enabled, this story will be highlighted in the featured banner section on the mobile app home screen.
+                </p>
+              </div>
+            </label>
+          </div>
+
+          {/* Card 3: Category settings */}
           <div className="bg-white rounded-3xl p-6 border border-zinc-100 shadow-sm space-y-4">
             <h3 className="text-sm font-extrabold text-zinc-800 flex items-center gap-2 pb-2 border-b border-zinc-50">
               <Folder className="w-4 h-4 text-[#B31046]" />

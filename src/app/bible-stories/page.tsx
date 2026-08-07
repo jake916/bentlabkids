@@ -18,6 +18,7 @@ import {
   Pencil,
   Globe,
   EyeOff,
+  Star,
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import { STORY_CATEGORIES } from "@/lib/storyCategories";
@@ -35,6 +36,7 @@ interface Story {
   status: StoryStatus;
   gradient: string;
   imageUrl?: string;
+  isFeatured?: boolean;
 }
 
 const INITIAL_STORIES: Story[] = [];
@@ -292,6 +294,7 @@ export default function BibleStoriesPage() {
               status: item.status === "PUBLISHED" ? "Published" : item.status === "SCHEDULED" ? "Scheduled" : "Draft",
               gradient: getAvatarBg(item.title || "Untitled"),
               imageUrl: resolveAssetUrl(item.featuredImage),
+              isFeatured: Boolean(item.isFeatured || item.featured),
             };
           });
           setStories(mapped);
@@ -522,6 +525,12 @@ export default function BibleStoriesPage() {
                               : "object-cover hover:scale-103"
                           }`}
                         />
+                        {story.isFeatured && (
+                          <span className="absolute top-4 left-4 text-[9px] font-extrabold px-2.5 py-1 rounded-full tracking-wider uppercase bg-amber-500/90 text-white backdrop-blur-md shadow-sm select-none flex items-center gap-1">
+                            <Star className="w-2.5 h-2.5 fill-white text-white" />
+                            Featured
+                          </span>
+                        )}
                         <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
                           story.status === "Published" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
                           : story.status === "Scheduled" ? "bg-blue-100/80 text-blue-800 border border-blue-200/30"
@@ -612,7 +621,15 @@ export default function BibleStoriesPage() {
                       );
                     })()}
                     {/* Title */}
-                    <p className="text-sm font-extrabold text-zinc-900 truncate">{story.title}</p>
+                    <div className="flex items-center gap-2 min-w-0">
+                      <p className="text-sm font-extrabold text-zinc-900 truncate">{story.title}</p>
+                      {story.isFeatured && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-50 text-amber-600 border border-amber-200 shrink-0">
+                          <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                          Featured
+                        </span>
+                      )}
+                    </div>
                     {/* Category */}
                     <span className="bg-blue-50 border border-blue-100 text-blue-600 text-[10px] font-extrabold px-2.5 py-0.5 rounded-md inline-block w-fit">{story.category}</span>
                     {/* Date */}

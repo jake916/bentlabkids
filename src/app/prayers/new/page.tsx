@@ -6,7 +6,7 @@ import Link from "next/link";
 import NavigationGuard from "@/components/NavigationGuard";
 import {
   BookOpen, Clock, Calendar, ChevronDown, Sparkles,
-  Send, Folder, Image as ImageIcon, Upload, X, ArrowLeft, FileImage,
+  Send, Folder, Image as ImageIcon, Upload, X, ArrowLeft, FileImage, Star,
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import RichTextEditor from "@/components/RichTextEditor";
@@ -17,6 +17,8 @@ import {
   updatePrayer,
   publishPrayer,
   Category,
+  createBanner,
+  getBanners,
 } from "@/lib/api";
 import MediaSelectModal, { MediaFile } from "@/components/MediaSelectModal";
 import BibleVerseSelector from "@/components/BibleVerseSelector";
@@ -85,6 +87,7 @@ function CreatePrayerForm() {
     occasion: "",
     statusOpt: "immediately" as PublishStatus,
     featuredImageUrl: null as string | null,
+    isFeatured: false,
   });
 
   const [title, setTitle]           = useState("");
@@ -92,6 +95,7 @@ function CreatePrayerForm() {
   const [verseRef, setVerseRef]     = useState("");
   const [duration, setDuration]     = useState("");
   const [content, setContent]       = useState("");
+  const [isFeatured, setIsFeatured] = useState(false);
   const [statusOpt, setStatusOpt]   = useState<PublishStatus>("immediately");
   const [publishDate, setPublishDate] = useState(() => {
     const d = new Date();
@@ -117,6 +121,7 @@ function CreatePrayerForm() {
     duration !== initialValuesRef.current.duration ||
     content !== initialValuesRef.current.content ||
     occasion !== initialValuesRef.current.occasion ||
+    isFeatured !== initialValuesRef.current.isFeatured ||
     statusOpt !== initialValuesRef.current.statusOpt ||
     (featuredImage?.url || null) !== (initialValuesRef.current.featuredImageUrl || null);
 
@@ -151,8 +156,11 @@ function CreatePrayerForm() {
   useEffect(() => {
     if (editId) {
       setIsLoadingDetails(true);
-      getPrayerById(editId)
-        .then((res) => {
+      Promise.all([
+        getPrayerById(editId),
+        getBanners().catch(() => ({ success: false, data: [] })),
+      ])
+        .then(([res, bannersRes]) => {
           if (res.success && res.data) {
             const prayer = res.data;
             setTitle(prayer.title);
@@ -191,6 +199,27 @@ function CreatePrayerForm() {
               statusVal = "draft";
             }
 
+            let featuredVal = Boolean(
+              (prayer as any).isFeatured ||
+              (prayer as any).featured ||
+              (prayer as any).is_featured ||
+              (prayer as any).isFeaturedContent ||
+              (prayer as any).featuredContent
+            );
+
+            if (!featuredVal && bannersRes?.data && Array.isArray(bannersRes.data)) {
+              const hasMatchingBanner = bannersRes.data.some((b: any) =>
+                b.header?.trim().toLowerCase() === (prayer.title || "").trim().toLowerCase() ||
+                (prayer.slug && b.buttonLink?.includes(prayer.slug)) ||
+                (prayer.id && b.buttonLink?.includes(prayer.id))
+              );
+              if (hasMatchingBanner) {
+                featuredVal = true;
+              }
+            }
+
+            setIsFeatured(featuredVal);
+
             if (prayer.featuredImage) {
               setFeaturedImage({
                 id: prayer.featuredImage,
@@ -211,6 +240,7 @@ function CreatePrayerForm() {
               occasion: currentOccasion,
               statusOpt: statusVal,
               featuredImageUrl: prayer.featuredImage || null,
+              isFeatured: featuredVal,
             };
           }
         })
@@ -272,17 +302,39 @@ function CreatePrayerForm() {
         image: featuredImage?.url || undefined,
         tags,
         status: "DRAFT" as const,
+        isFeatured,
+        featured: isFeatured,
       };
 
       if (editId) {
         const res = await updatePrayer(editId, payload);
         if (res.success) {
+          if (isFeatured) {
+            await createBanner({
+              header: (title || "Untitled Prayer").trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Pray Now",
+              buttonLink: `/prayers/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
+          }
           addToast("success", "Saved draft successfully!");
           return true;
         }
       } else {
         const res = await createPrayer(payload);
         if (res.success) {
+          if (isFeatured) {
+            await createBanner({
+              header: (title || "Untitled Prayer").trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Pray Now",
+              buttonLink: `/prayers/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
+          }
           addToast("success", "Saved draft successfully!");
           return true;
         }
@@ -341,6 +393,8 @@ function CreatePrayerForm() {
         prayerWhen: occasion.trim() || null,
         ...(scheduledFor !== undefined ? { scheduledFor } : {}),
         status,
+        isFeatured,
+        featured: isFeatured,
       };
 
       if (editId) {
@@ -349,6 +403,16 @@ function CreatePrayerForm() {
           // If publish immediately, call the publish endpoint explicitly
           if (statusOpt === "immediately") {
             await publishPrayer(editId).catch(() => {});
+          }
+          if (isFeatured) {
+            await createBanner({
+              header: title.trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Pray Now",
+              buttonLink: `/prayers/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
           }
           addToast("success", `Prayer "${title.trim()}" updated successfully!`);
           setTimeout(() => {
@@ -364,6 +428,16 @@ function CreatePrayerForm() {
           if (statusOpt === "immediately") {
             await publishPrayer(res.data.id).catch(() => {});
           }
+          if (isFeatured) {
+            await createBanner({
+              header: title.trim(),
+              backgroundColor: "#1a1a2e",
+              buttonText: "Pray Now",
+              buttonLink: `/prayers/${finalSlug}`,
+              image: featuredImage?.url || "",
+              active: true,
+            }).catch((err) => console.warn("Banner sync failed:", err));
+          }
           addToast("success", `Prayer "${title.trim()}" created successfully!`);
           setTimeout(() => {
             router.push("/prayers");
@@ -373,11 +447,11 @@ function CreatePrayerForm() {
         }
       }
     } catch (err: any) {
-      console.error("Failed to submit prayer. Full error context:", err);
-      let msg = err?.message || "An unexpected error occurred.";
+      console.error("Failed to submit prayer:", err);
+      let msg = err?.message || (typeof err === "string" ? err : "An unexpected error occurred.");
       if (err?.errors) {
         if (Array.isArray(err.errors)) {
-          const details = err.errors.map((e: any) => `${e.field}: ${e.message}`).join(", ");
+          const details = err.errors.map((e: any) => (typeof e === "string" ? e : `${e.field || e.path || ""}: ${e.message || ""}`)).join(", ");
           msg = `${msg} (${details})`;
         } else if (typeof err.errors === "string") {
           msg = `${msg} (${err.errors})`;
@@ -572,6 +646,52 @@ function CreatePrayerForm() {
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                 ) : editId ? "Update Prayer" : statusOpt === "immediately" ? "Publish Prayer" : statusOpt === "scheduled" ? "Schedule Prayer" : "Save Draft"}
               </button>
+            </div>
+
+            {/* Featured Content */}
+            <div className="bg-white rounded-3xl p-6 border border-zinc-100 shadow-sm space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-zinc-50">
+                <h3 className="text-sm font-extrabold text-zinc-800 flex items-center gap-2">
+                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  Featured Content
+                </h3>
+                {isFeatured && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-600 border border-amber-200">
+                    <Star className="w-3 h-3 fill-amber-500 text-amber-500" />
+                    Featured
+                  </span>
+                )}
+              </div>
+
+              <label className="flex items-start gap-3.5 p-3.5 rounded-2xl border border-zinc-100 hover:border-amber-200 bg-zinc-50/50 hover:bg-amber-50/20 transition-all cursor-pointer group">
+                <div className="pt-0.5">
+                  <input
+                    type="checkbox"
+                    checked={isFeatured}
+                    onChange={(e) => setIsFeatured(e.target.checked)}
+                    className="sr-only"
+                  />
+                  <div
+                    className={`w-10 h-6 rounded-full transition-colors relative p-1 flex items-center ${
+                      isFeatured ? "bg-[#B31046]" : "bg-zinc-300"
+                    }`}
+                  >
+                    <div
+                      className={`w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                        isFeatured ? "translate-x-4" : "translate-x-0"
+                      }`}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1 select-none">
+                  <span className="text-xs font-extrabold text-zinc-800 group-hover:text-[#B31046] transition-colors block">
+                    Feature on App Dashboard
+                  </span>
+                  <p className="text-[11px] font-semibold text-zinc-500 leading-normal">
+                    When enabled, this prayer will be highlighted in the featured banner section on the mobile app home screen.
+                  </p>
+                </div>
+              </label>
             </div>
 
             {/* Category */}

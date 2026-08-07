@@ -17,6 +17,7 @@ import {
   List,
   Globe,
   EyeOff,
+  Star,
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import { PRAYER_CATEGORIES, PRAYER_CATEGORY_COLOURS } from "@/lib/prayerCategories";
@@ -44,6 +45,7 @@ interface Prayer {
   status: PrayerStatus;
   imageUrl?: string;
   gradient: string;
+  isFeatured?: boolean;
 }
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
@@ -92,6 +94,7 @@ function mapApiPrayerToPrayer(api: PrayerResponse): Prayer {
     status,
     imageUrl: resolveAssetUrl(api.featuredImage),
     gradient: getAvatarBg(api.title),
+    isFeatured: Boolean(api.isFeatured || api.featured),
   };
 }
 
@@ -467,7 +470,15 @@ export default function PrayersPage() {
                     })()}
                     {/* Title + excerpt */}
                     <div className="min-w-0">
-                      <p className="text-sm font-extrabold text-zinc-900 truncate">{prayer.title}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-extrabold text-zinc-900 truncate">{prayer.title}</p>
+                        {prayer.isFeatured && (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-amber-50 text-amber-600 border border-amber-200 shrink-0">
+                            <Star className="w-2.5 h-2.5 fill-amber-500 text-amber-500" />
+                            Featured
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-zinc-400 font-medium truncate mt-0.5">{prayer.excerpt}</p>
                     </div>
                     <div><CategoryBadge category={prayer.category} /></div>
@@ -535,6 +546,12 @@ export default function PrayersPage() {
                               : "object-cover hover:scale-103"
                           }`}
                         />
+                        {prayer.isFeatured && (
+                          <span className="absolute top-4 left-4 text-[9px] font-extrabold px-2.5 py-1 rounded-full tracking-wider uppercase bg-amber-500/90 text-white backdrop-blur-md shadow-sm select-none flex items-center gap-1">
+                            <Star className="w-2.5 h-2.5 fill-white text-white" />
+                            Featured
+                          </span>
+                        )}
                         <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
                           prayer.status === "Published" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
                           : prayer.status === "Scheduled" ? "bg-blue-50/90 text-blue-600 border border-blue-100/50"

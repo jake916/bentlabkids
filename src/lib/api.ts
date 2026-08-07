@@ -355,6 +355,8 @@ export interface StoryResponse {
   verseReference: string | null;
   ageGroup: "TODDLER" | "PRESCHOOL" | "EARLY" | "KIDS" | null;
   featuredImage: string | null;
+  isFeatured?: boolean;
+  featured?: boolean;
   status: "DRAFT" | "PUBLISHED" | "SCHEDULED";
   scheduledFor: string | null;
   publishedAt: string | null;
@@ -393,6 +395,8 @@ export interface CreateStoryPayload {
   tags?: string[];
   scheduledFor?: string | null;
   status?: "DRAFT" | "PUBLISHED" | "SCHEDULED";
+  isFeatured?: boolean;
+  featured?: boolean;
 }
 
 export interface CreateStoryResponse {
@@ -468,6 +472,8 @@ export interface PrayerResponse {
   ageGroup: "TODDLER" | "PRESCHOOL" | "EARLY" | "KIDS" | null;
   featuredImage: string | null;
   prayerWhen: string | null;
+  isFeatured?: boolean;
+  featured?: boolean;
   status: "DRAFT" | "PUBLISHED" | "SCHEDULED";
   scheduledFor: string | null;
   publishedAt: string | null;
@@ -495,6 +501,8 @@ export interface CreatePrayerPayload {
   prayerWhen?: string | null;
   scheduledFor?: string | null;
   status?: "DRAFT" | "PUBLISHED" | "SCHEDULED";
+  isFeatured?: boolean;
+  featured?: boolean;
 }
 
 export interface CreatePrayerResponse {
@@ -1292,6 +1300,54 @@ export async function getAppUsers(params?: {
     : "";
   return apiFetch<ListAppUsersResponse>(`/api/v1/admin/users${query}`);
 }
+
+// ─── Banners API ─────────────────────────────────────────────────────────────
+
+export interface Banner {
+  id?: string;
+  header: string;
+  backgroundColor: string;
+  buttonText: string;
+  buttonLink: string;
+  image?: string | null;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CreateBannerPayload {
+  header: string;
+  backgroundColor?: string;
+  buttonText?: string;
+  buttonLink?: string;
+  image?: string;
+  active?: boolean;
+}
+
+export interface CreateBannerResponse {
+  success: boolean;
+  data?: any;
+  message?: string;
+}
+
+export async function createBanner(payload: CreateBannerPayload): Promise<CreateBannerResponse> {
+  return apiFetch<CreateBannerResponse>("/api/v1/admin/banners", {
+    method: "POST",
+    body: JSON.stringify({
+      header: payload.header,
+      backgroundColor: payload.backgroundColor || "#1a1a2e",
+      buttonText: payload.buttonText || "View Details",
+      buttonLink: payload.buttonLink || "",
+      image: payload.image || "",
+      active: payload.active ?? true,
+    }),
+  });
+}
+
+export async function getBanners(): Promise<{ success: boolean; data: Banner[] }> {
+  return apiFetch<{ success: boolean; data: Banner[] }>("/api/v1/admin/banners");
+}
+
 
 
 
