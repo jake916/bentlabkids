@@ -347,13 +347,7 @@ export default function MediaPage() {
         try {
           const res = await getVideoStatus(realId);
           if (res?.success && res.data) {
-            let status = res.data.processingStatus;
-            // Workaround for backend mapping bug: if status is FAILED but there is no failureReason,
-            // it means Bunny.net is still encoding (status code 2). Treat as PROCESSING and keep polling.
-            if (status === "FAILED" && !res.data.failureReason) {
-              status = "PROCESSING";
-            }
-
+            let status: string = res.data.processingStatus;
             const newPlaybackUrl = res.data.playbackUrl;
             const rawThumbnailUrl = (res.data as any).thumbnailUrl;
             const newThumbnailUrl = isThumbnailValid(rawThumbnailUrl)
@@ -366,12 +360,23 @@ export default function MediaPage() {
               ? (newPlaybackUrl.startsWith("http") ? newPlaybackUrl : resolveAssetUrl(newPlaybackUrl))
               : undefined;
 
+            // Video is ready if status is READY/FINISHED/COMPLETED or if a valid playbackUrl exists with no failureReason
+            const isReady =
+              status === "READY" ||
+              status === "FINISHED" ||
+              status === "COMPLETED" ||
+              (Boolean(newPlaybackUrl || item.rawPlaybackUrl || item.url) && !res.data.failureReason);
+
+            const updatedStatus = isReady
+              ? "READY"
+              : (status === "FAILED" && !res.data.failureReason ? "PROCESSING" : status);
+
             setMediaFiles((prev) =>
               prev.map((f) => {
                 if (f.id === item.id) {
-                  return {
+                  const updatedFile = {
                     ...f,
-                    processingStatus: status,
+                    processingStatus: updatedStatus,
                     url: resolvedNewUrl || f.url,
                     rawPlaybackUrl: newPlaybackUrl || f.rawPlaybackUrl,
                     thumbnailUrl: newThumbnailUrl ? resolveAssetUrl(newThumbnailUrl) : f.thumbnailUrl
@@ -575,11 +580,12 @@ export default function MediaPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {paginated.map((file) => {
             const isSelected = selectedIds.includes(file.id);
-            const isProcessing = file.type === "MP4" || file.type === "MOV"
-              ? (file.processingStatus === "QUEUED" || file.processingStatus === "UPLOADING" || file.processingStatus === "PROCESSING")
+            const hasPlaybackUrl = Boolean(file.url || file.rawPlaybackUrl);
+            const isProcessing = (file.type === "MP4" || file.type === "MOV")
+              ? (file.processingStatus === "QUEUED" || file.processingStatus === "UPLOADING" || file.processingStatus === "PROCESSING") && !hasPlaybackUrl
               : false;
-            const isFailed = file.type === "MP4" || file.type === "MOV"
-              ? file.processingStatus === "FAILED"
+            const isFailed = (file.type === "MP4" || file.type === "MOV")
+              ? file.processingStatus === "FAILED" && !hasPlaybackUrl
               : false;
 
             return (
@@ -782,24 +788,36 @@ export default function MediaPage() {
 
             <div className="relative w-full aspect-video rounded-2xl bg-gradient-to-br from-zinc-100 to-zinc-200 flex items-center justify-center overflow-hidden border border-zinc-100 bg-zinc-950">
               {detailFile.type === "MP4" || detailFile.type === "MOV" ? (
-                (detailFile.processingStatus === "QUEUED" || detailFile.processingStatus === "UPLOADING" || detailFile.processingStatus === "PROCESSING") ? (
-                  <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
-                    <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-amber-500">Video is processing</p>
-                      <p className="text-xs text-zinc-400">Bunny.net is currently converting and optimizing this video for playback.</p>
-                    </div>
-                  </div>
-                ) : detailFile.processingStatus === "FAILED" ? (
-                  <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
-                    <AlertTriangle className="w-8 h-8 text-red-500" />
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-red-500">Processing Failed</p>
-                      <p className="text-xs text-zinc-400">The video failed to transcode. Please try re-uploading.</p>
-                    </div>
-                  </div>
-                ) : (() => {
+                (() => {
                   const resolvedUrl = resolveVideoPlaybackUrl(detailFile.rawPlaybackUrl || detailFile.url);
+                  const hasUrl = Boolean(resolvedUrl && resolvedUrl.length > 0);
+                  const isStillProcessing = (detailFile.processingStatus === "QUEUED" || detailFile.processingStatus === "UPLOADING" || detailFile.processingStatus === "PROCESSING") && !hasUrl;
+                  const isHasFailed = detailFile.processingStatus === "FAILED" && !hasUrl;
+
+                  if (isStillProcessing) {
+                    return (
+                      <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
+                        <div className="w-8 h-8 border-3 border-amber-500 border-t-transparent rounded-full animate-spin" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-amber-500">Video is processing</p>
+                          <p className="text-xs text-zinc-400">Bunny.net is currently converting and optimizing this video for playback.</p>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isHasFailed) {
+                    return (
+                      <div className="absolute inset-0 bg-zinc-900 flex flex-col items-center justify-center gap-3 p-4 text-center z-10">
+                        <AlertTriangle className="w-8 h-8 text-red-500" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-bold text-red-500">Processing Failed</p>
+                          <p className="text-xs text-zinc-400">The video failed to transcode. Please try re-uploading.</p>
+                        </div>
+                      </div>
+                    );
+                  }
+
                   const isBunnyEmbed = resolvedUrl.includes("iframe.mediadelivery.net");
                   return isBunnyEmbed ? (
                     <iframe

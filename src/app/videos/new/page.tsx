@@ -21,6 +21,7 @@ import {
   CategoryApiData,
   publishVideoContent,
   unpublishVideoContent,
+  getVideoStatus,
 } from "@/lib/api";
 import MediaSelectModal, { MediaFile } from "@/components/MediaSelectModal";
 import BibleVerseSelector from "@/components/BibleVerseSelector";
@@ -262,6 +263,33 @@ function CreateVideoForm() {
         });
     }
   }, [editId]);
+
+  // ── Poll status for attached video ──
+  useEffect(() => {
+    if (!attachedVideo?.id) return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const res = await getVideoStatus(attachedVideo.id);
+        if (res?.success && res.data) {
+          if (res.data.playbackUrl) {
+            const resolvedUrl = resolveVideoPlaybackUrl(res.data.playbackUrl);
+            setAttachedVideo((prev) => {
+              if (!prev || prev.id !== attachedVideo.id) return prev;
+              return {
+                ...prev,
+                url: resolvedUrl,
+              };
+            });
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to check status for attached video:", attachedVideo.id, err);
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [attachedVideo?.id]);
 
   const handleEditorImageRequest = useCallback((insert: (url: string) => void) => {
     editorImageInsert.current = insert;

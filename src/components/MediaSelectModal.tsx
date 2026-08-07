@@ -10,7 +10,7 @@ import {
   CheckCircle2,
   AlertTriangle,
 } from "lucide-react";
-import { getUploads, resolveAssetUrl, resolveVideoPlaybackUrl, getBunnyThumbnailUrl } from "@/lib/api";
+import { getUploads, resolveAssetUrl, resolveVideoPlaybackUrl, getBunnyThumbnailUrl, getVideoStatus } from "@/lib/api";
 
 export interface MediaFile {
   id: string;
@@ -232,6 +232,56 @@ export default function MediaSelectModal({
     }
   }, [isOpen, fetchLibraryFiles]);
 
+  // ── Poll Bunny.net video status in library tab ──
+  useEffect(() => {
+    if (!isOpen || type !== "video") return;
+
+    const processingItems = mediaList.filter(
+      (m) =>
+        m.processingStatus === "PROCESSING" ||
+        m.processingStatus === "QUEUED" ||
+        m.processingStatus === "UPLOADING"
+    );
+
+    if (processingItems.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      for (const item of processingItems) {
+        try {
+          const res = await getVideoStatus(item.id);
+          if (res?.success && res.data) {
+            let status: string = res.data.processingStatus;
+            if (status === "FAILED" && !res.data.failureReason) {
+              status = "PROCESSING";
+            }
+            const isReady = status === "READY" || status === "FINISHED" || status === "COMPLETED";
+
+            const newPlaybackUrl = res.data.playbackUrl;
+            const newThumbnailUrl = res.data.thumbnailUrl || (newPlaybackUrl ? getBunnyThumbnailUrl(newPlaybackUrl) : null);
+
+            setMediaList((prev) =>
+              prev.map((m) => {
+                if (m.id === item.id) {
+                  return {
+                    ...m,
+                    processingStatus: isReady ? "READY" : status,
+                    url: newPlaybackUrl ? resolveVideoPlaybackUrl(newPlaybackUrl) : m.url,
+                    thumbnailUrl: newThumbnailUrl ? resolveAssetUrl(newThumbnailUrl) : m.thumbnailUrl,
+                  };
+                }
+                return m;
+              })
+            );
+          }
+        } catch (err) {
+          console.warn("Failed to update video status in MediaSelectModal:", item.id, err);
+        }
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [isOpen, type, mediaList]);
+
   if (!isOpen) return null;
 
   const handleConfirm = () => {
@@ -430,11 +480,12 @@ export default function MediaSelectModal({
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-5">
                 {mediaList.map((v) => {
                   const isSelected = selectedMediaId === v.id;
+                  const hasUrl = Boolean(v.url && v.url.length > 0);
                   const isProcessing =
-                    v.processingStatus === "PROCESSING" ||
-                    v.processingStatus === "QUEUED" ||
-                    v.processingStatus === "UPLOADING";
-                  const isFailed = v.processingStatus === "FAILED";
+                    (v.processingStatus === "PROCESSING" ||
+                     v.processingStatus === "QUEUED" ||
+                     v.processingStatus === "UPLOADING") && !hasUrl;
+                  const isFailed = v.processingStatus === "FAILED" && !hasUrl;
                   const isReady = !isProcessing && !isFailed;
 
                   return (

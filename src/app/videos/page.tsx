@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { ToastContainer, ToastItem } from "@/components/Toast";
 import { VIDEO_CATEGORIES, VIDEO_CATEGORY_COLOURS } from "@/lib/videoCategories";
-import { getVideoContents, deleteVideoContent, resolveAssetUrl, resolveVideoPlaybackUrl, VideoContentItem, getCategories, CategoryApiData, getVideoContentById, publishVideoContent, unpublishVideoContent } from "@/lib/api";
+import { getVideoContents, deleteVideoContent, resolveAssetUrl, resolveVideoPlaybackUrl, VideoContentItem, getCategories, CategoryApiData, getVideoContentById, publishVideoContent, unpublishVideoContent, getVideoStatus, getBunnyThumbnailUrl } from "@/lib/api";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -339,6 +339,107 @@ export default function VideosPage() {
 
   useEffect(() => { fetchVideos(); }, [fetchVideos]);
 
+  // ── Poll Bunny.net Status for Videos in Processing State ──────────────────
+  useEffect(() => {
+    const processingVideos = videos.filter((v) => {
+      const pStatus = v.videoAsset?.processingStatus;
+      return pStatus === "PROCESSING" || pStatus === "QUEUED" || pStatus === "UPLOADING";
+    });
+
+    if (processingVideos.length === 0) return;
+
+    const intervalId = setInterval(async () => {
+      for (const video of processingVideos) {
+        if (!video.videoAsset?.id) continue;
+        try {
+          const res = await getVideoStatus(video.videoAsset.id);
+          if (res?.success && res.data) {
+            let status: string = res.data.processingStatus;
+            if (status === "FAILED" && !res.data.failureReason) {
+              status = "PROCESSING";
+            }
+
+            const newPlaybackUrl = res.data.playbackUrl || video.videoAsset.playbackUrl;
+            const isNowReady =
+              status === "READY" ||
+              status === "FINISHED" ||
+              status === "COMPLETED" ||
+              (Boolean(newPlaybackUrl) && !res.data.failureReason);
+
+            const finalStatus = isNowReady
+              ? ("READY" as const)
+              : (status === "FAILED" && !res.data.failureReason ? ("PROCESSING" as const) : (status as any));
+
+            setVideos((prev) =>
+              prev.map((v) => {
+                if (v.id === video.id && v.videoAsset) {
+                  const updatedAsset = {
+                    ...v.videoAsset,
+                    processingStatus: finalStatus,
+                    playbackUrl: newPlaybackUrl,
+                    thumbnailUrl: res.data.thumbnailUrl || (newPlaybackUrl ? getBunnyThumbnailUrl(newPlaybackUrl) : v.videoAsset.thumbnailUrl),
+                  };
+                  return {
+                    ...v,
+                    videoAsset: updatedAsset,
+                  };
+                }
+                return v;
+              })
+            );
+          }
+        } catch (err) {
+          console.warn("Failed to check status for video asset:", video.videoAsset.id, err);
+        }
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [videos]);
+
+  // ── Live status polling for Preview Modal ──────────────────────────────────
+  useEffect(() => {
+    if (!previewVideo?.videoAsset?.id) return;
+    const pStatus = previewVideo.videoAsset.processingStatus;
+    if (pStatus !== "PROCESSING" && pStatus !== "QUEUED" && pStatus !== "UPLOADING") return;
+
+    const intervalId = setInterval(async () => {
+      try {
+        const res = await getVideoStatus(previewVideo.videoAsset!.id);
+        if (res?.success && res.data) {
+          let status: string = res.data.processingStatus;
+          const newPlaybackUrl = res.data.playbackUrl || previewVideo.videoAsset?.playbackUrl;
+          const isReady =
+            status === "READY" ||
+            status === "FINISHED" ||
+            status === "COMPLETED" ||
+            (Boolean(newPlaybackUrl) && !res.data.failureReason);
+
+          const finalStatus = isReady
+            ? ("READY" as const)
+            : (status === "FAILED" && !res.data.failureReason ? ("PROCESSING" as const) : (status as any));
+
+          setPreviewVideo((prev) => {
+            if (!prev || !prev.videoAsset) return prev;
+            return {
+              ...prev,
+              videoAsset: {
+                ...prev.videoAsset,
+                processingStatus: finalStatus,
+                playbackUrl: newPlaybackUrl || prev.videoAsset.playbackUrl,
+                thumbnailUrl: res.data.thumbnailUrl || (newPlaybackUrl ? getBunnyThumbnailUrl(newPlaybackUrl) : prev.videoAsset?.thumbnailUrl || null),
+              },
+            };
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to check status for preview video asset:", previewVideo?.videoAsset?.id, err);
+      }
+    }, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [previewVideo]);
+
   const paginatedVideos = videos;
 
   const handleDelete = async () => {
@@ -468,6 +569,7 @@ export default function VideosPage() {
                   {(() => {
                     const videoImg = video.featuredImage || video.videoAsset?.thumbnailUrl;
                     const isFallback = !videoImg || videoImg === "/logogo.png";
+                    const isAssetProcessing = video.videoAsset?.processingStatus === "PROCESSING" || video.videoAsset?.processingStatus === "QUEUED" || video.videoAsset?.processingStatus === "UPLOADING";
                     return (
                       <div 
                         onClick={() => handlePreviewVideo(video)}
@@ -490,9 +592,15 @@ export default function VideosPage() {
                               : "object-cover"
                           }`}
                         />
-                        <div className="absolute inset-0 bg-black/10 flex items-center justify-center group-hover:bg-black/20 transition-colors">
-                          <Play className="w-3.5 h-3.5 text-white fill-white/80" />
-                        </div>
+                        {isAssetProcessing ? (
+                          <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                            <div className="w-3.5 h-3.5 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 bg-black/10 flex items-center justify-center group-hover:bg-black/20 transition-colors">
+                            <Play className="w-3.5 h-3.5 text-white fill-white/80" />
+                          </div>
+                        )}
                       </div>
                     );
                   })()}
@@ -560,6 +668,7 @@ export default function VideosPage() {
                 {(() => {
                   const videoImg = video.featuredImage || video.videoAsset?.thumbnailUrl;
                   const isFallback = !videoImg || videoImg === "/logogo.png";
+                  const isAssetProcessing = video.videoAsset?.processingStatus === "PROCESSING" || video.videoAsset?.processingStatus === "QUEUED" || video.videoAsset?.processingStatus === "UPLOADING";
                   return (
                     <div 
                       onClick={() => handlePreviewVideo(video)}
@@ -582,19 +691,26 @@ export default function VideosPage() {
                             : "object-cover hover:scale-103"
                         }`}
                       />
-                      {/* Play Overlay */}
-                      <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
-                        <div className="w-12 h-12 rounded-full bg-white/95 text-[#B31046] flex items-center justify-center shadow-lg transform group-hover:scale-108 transition-all">
-                          <Play className="w-5 h-5 fill-current ml-0.5" />
+                      {/* Play / Processing Overlay */}
+                      {isAssetProcessing ? (
+                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 z-10">
+                          <div className="w-6 h-6 border-2 border-amber-400 border-t-transparent rounded-full animate-spin" />
+                          <span className="text-[10px] font-bold text-amber-400 tracking-wide uppercase">Processing Video...</span>
                         </div>
-                      </div>
+                      ) : (
+                        <div className="absolute inset-0 bg-black/20 group-hover:bg-black/30 transition-colors flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-full bg-white/95 text-[#B31046] flex items-center justify-center shadow-lg transform group-hover:scale-108 transition-all">
+                            <Play className="w-5 h-5 fill-current ml-0.5" />
+                          </div>
+                        </div>
+                      )}
                       {/* Duration Badge */}
-                      <span className="absolute bottom-4 left-4 text-[10px] font-extrabold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-md flex items-center gap-1 select-none">
+                      <span className="absolute bottom-4 left-4 text-[10px] font-extrabold bg-black/60 text-white px-2 py-0.5 rounded-md backdrop-blur-md flex items-center gap-1 select-none z-10">
                         <Clock className="w-3 h-3" />
                         {formatDuration(video.duration || video.videoAsset?.durationSeconds)}
                       </span>
                       {/* Status Badge */}
-                      <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none ${
+                      <span className={`absolute top-4 right-4 text-[9px] font-extrabold px-3 py-1 rounded-full tracking-wider uppercase backdrop-blur-md shadow-sm select-none z-10 ${
                         video.status === "PUBLISHED" ? "bg-emerald-100/80 text-emerald-800 border border-emerald-200/30"
                         : video.status === "SCHEDULED" ? "bg-blue-50/90 text-blue-600 border border-blue-100/50"
                         : "bg-zinc-800/40 text-zinc-200 border border-white/10"
